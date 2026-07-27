@@ -1,10 +1,45 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Dataset, PaginatedDatasets } from "@/lib/datasets";
+import type { Dataset, DatasetInput, PaginatedDatasets } from "@/lib/datasets";
 import { MAX_PAGE_SIZE } from "@/lib/pagination";
 
 const popular = ["Immobilier en France", "Chômage des jeunes", "Météo historique", "Fraude bancaire"];
+const RESULTS_PER_PAGE = 6;
+
+type DatasetFormState = {
+  title: string; provider: string; sourceType: string; description: string; domain: string;
+  country: string; period: string; formats: string; license: string; update: string;
+  score: string; size: string; access: string; variables: string; url: string; tags: string; accent: string;
+};
+
+const emptyForm: DatasetFormState = {
+  title: "", provider: "", sourceType: "", description: "", domain: "",
+  country: "", period: "", formats: "", license: "", update: "",
+  score: "", size: "", access: "", variables: "", url: "", tags: "", accent: "#6d5dfc",
+};
+
+function datasetToForm(dataset: Dataset): DatasetFormState {
+  return {
+    title: dataset.title, provider: dataset.provider, sourceType: dataset.sourceType,
+    description: dataset.description, domain: dataset.domain, country: dataset.country,
+    period: dataset.period, formats: dataset.formats.join(", "), license: dataset.license,
+    update: dataset.update, score: String(dataset.score), size: dataset.size, access: dataset.access,
+    variables: dataset.variables.join(", "), url: dataset.url, tags: dataset.tags.join(", "), accent: dataset.accent,
+  };
+}
+
+function formToInput(form: DatasetFormState): DatasetInput {
+  return {
+    title: form.title.trim(), provider: form.provider.trim(), sourceType: form.sourceType.trim(),
+    description: form.description.trim(), domain: form.domain.trim(), country: form.country.trim(),
+    period: form.period.trim(), formats: form.formats.split(",").map((v) => v.trim()).filter(Boolean),
+    license: form.license.trim(), update: form.update.trim(), score: Number(form.score),
+    size: form.size.trim(), access: form.access.trim(),
+    variables: form.variables.split(",").map((v) => v.trim()).filter(Boolean),
+    url: form.url.trim(), tags: form.tags.split(",").map((v) => v.trim()).filter(Boolean), accent: form.accent.trim(),
+  };
+}
 
 export default function Home() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -21,6 +56,18 @@ export default function Home() {
   const [compare, setCompare] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
   const [selected, setSelected] = useState<Dataset | null>(null);
+  const [page, setPage] = useState(1);
+
+  const [apiKey, setApiKey] = useState("");
+  const [apiKeyLoaded, setApiKeyLoaded] = useState(false);
+  const [apiKeyDraft, setApiKeyDraft] = useState("");
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const isAdmin = apiKey.trim().length > 0;
+
+  const [formModal, setFormModal] = useState<{ mode: "create" | "edit"; dataset?: Dataset } | null>(null);
+  const [formState, setFormState] = useState<DatasetFormState>(emptyForm);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("datafinder-favorites");
@@ -37,23 +84,102 @@ export default function Home() {
   }, [favorites, favoritesLoaded]);
 
   useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/datasets?pageSize=${MAX_PAGE_SIZE}`)
-      .then((response) => {
-        if (!response.ok) throw new Error("request failed");
-        return response.json();
-      })
-      .then((payload: PaginatedDatasets) => {
-        if (!cancelled) setDatasets(payload.data);
-      })
-      .catch(() => {
-        if (!cancelled) setDatasetsError(true);
-      })
-      .finally(() => {
-        if (!cancelled) setDatasetsLoading(false);
-      });
-    return () => { cancelled = true; };
+    const saved = window.sessionStorage.getItem("datafinder-api-key");
+    window.setTimeout(() => {
+      if (saved) setApiKey(saved);
+      setApiKeyLoaded(true);
+    }, 0);
   }, []);
+
+  useEffect(() => {
+    if (!apiKeyLoaded) return;
+    if (apiKey) window.sessionStorage.setItem("datafinder-api-key", apiKey);
+    else window.sessionStorage.removeItem("datafinder-api-key");
+  }, [apiKey, apiKeyLoaded]);
+
+  async function loadDatasets() {
+    setDatasetsLoading(true);
+    setDatasetsError(false);
+    try {
+      const response = await fetch(`/api/datasets?pageSize=${MAX_PAGE_SIZE}`);
+      if (!response.ok) throw new Error("request failed");
+      const payload: PaginatedDatasets = await response.json();
+      setDatasets(payload.data);
+    } catch {
+      setDatasetsError(true);
+    } finally {
+      setDatasetsLoading(false);
+    }
+  }
+
+  useEffect(() => { window.setTimeout(() => { loadDatasets(); }, 0); }, []);
+
+  function handleUnauthorized() {
+    setApiKey("");
+    window.alert("Clé API invalide ou manquante. Reconnectez-vous via l'espace admin.");
+  }
+
+  function openCreateForm() {
+    setFormState(emptyForm);
+    setFormError(null);
+    setFormModal({ mode: "create" });
+  }
+
+  function openEditForm(dataset: Dataset) {
+    setFormState(datasetToForm(dataset));
+    setFormError(null);
+    setFormModal({ mode: "edit", dataset });
+  }
+
+  async function submitForm(event: FormEvent) {
+    event.preventDefault();
+    setFormError(null);
+    setFormSubmitting(true);
+    try {
+      const input = formToInput(formState);
+      const isEdit = formModal?.mode === "edit";
+      const url = isEdit ? `/api/datasets/${formModal.dataset!.id}` : "/api/datasets";
+      const response = await fetch(url, {
+        method: isEdit ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(input),
+      });
+      if (response.status === 401 || response.status === 503) {
+        setShowAdminPanel(false);
+        setFormModal(null);
+        handleUnauthorized();
+        return;
+      }
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        setFormError(payload?.details?.join(" ") || payload?.error || "Une erreur est survenue.");
+        return;
+      }
+      setFormModal(null);
+      await loadDatasets();
+    } catch {
+      setFormError("Impossible de contacter le serveur.");
+    } finally {
+      setFormSubmitting(false);
+    }
+  }
+
+  async function handleDelete(dataset: Dataset) {
+    if (!window.confirm(`Supprimer « ${dataset.title} » ? Cette action est irréversible.`)) return;
+    const response = await fetch(`/api/datasets/${dataset.id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    });
+    if (response.status === 401 || response.status === 503) {
+      handleUnauthorized();
+      return;
+    }
+    if (!response.ok && response.status !== 204) {
+      window.alert("La suppression a échoué.");
+      return;
+    }
+    await loadDatasets();
+  }
 
   const results = useMemo(() => {
     const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -66,6 +192,12 @@ export default function Home() {
         (!favoritesOnly || favorites.includes(dataset.id));
     }).sort((a, b) => b.score - a.score);
   }, [datasets, query, format, source, license, favoritesOnly, favorites]);
+
+  const totalPages = Math.max(1, Math.ceil(results.length / RESULTS_PER_PAGE));
+  const currentPage = Math.min(page, totalPages);
+  const pagedResults = results.slice((currentPage - 1) * RESULTS_PER_PAGE, currentPage * RESULTS_PER_PAGE);
+
+  useEffect(() => { window.setTimeout(() => setPage(1), 0); }, [query, format, source, license, favoritesOnly]);
 
   function runSearch(event?: FormEvent) {
     event?.preventDefault();
@@ -101,7 +233,12 @@ export default function Home() {
           <button className={favoritesOnly ? "nav-active" : ""} onClick={() => { setFavoritesOnly(!favoritesOnly); setSearched(true); }}>Favoris <b>{favorites.length}</b></button>
           <a href="#how">Comment ça marche</a>
         </nav>
-        <button className="avatar" aria-label="Espace utilisateur">PK</button>
+        <button
+          className={isAdmin ? "avatar avatar-active" : "avatar"}
+          aria-label="Espace admin"
+          title={isAdmin ? "Connecté en tant qu'admin" : "Se connecter en tant qu'admin"}
+          onClick={() => { setApiKeyDraft(apiKey); setShowAdminPanel(true); }}
+        >PK</button>
       </header>
 
       <section className="hero" id="top">
@@ -152,18 +289,23 @@ export default function Home() {
       <section className="discover" id="discover">
         <div className="section-heading">
           <div><span className="section-kicker">SÉLECTION DATAFINDER</span><h2>{searched ? `${results.length} résultats pertinents` : "Des données prêtes à servir"}</h2></div>
-          {searched && <button className="reset" onClick={() => { setQuery(""); setFormat("Tous les formats"); setSource("Toutes les sources"); setLicense("Toutes les licences"); setFavoritesOnly(false); }}>Réinitialiser les filtres</button>}
+          <div className="heading-actions">
+            {isAdmin && <button className="add-dataset" onClick={openCreateForm}>+ Ajouter un dataset</button>}
+            {searched && <button className="reset" onClick={() => { setQuery(""); setFormat("Tous les formats"); setSource("Toutes les sources"); setLicense("Toutes les licences"); setFavoritesOnly(false); }}>Réinitialiser les filtres</button>}
+          </div>
         </div>
 
         {datasetsLoading && <div className="empty"><span>⌕</span><h3>Chargement des datasets…</h3></div>}
         {datasetsError && <div className="empty"><span>⌕</span><h3>Impossible de charger les datasets.</h3><p>Vérifiez que l&apos;API /api/datasets répond, puis rechargez la page.</p></div>}
 
         {!datasetsLoading && !datasetsError && <div className="results-grid" id="results">
-          {results.map((dataset, index) => (
+          {pagedResults.map((dataset, index) => {
+            const globalIndex = (currentPage - 1) * RESULTS_PER_PAGE + index;
+            return (
             <article className="dataset-card" key={dataset.id} style={{ "--accent": dataset.accent } as React.CSSProperties}>
               <div className="card-top">
                 <div className="source-logo">{dataset.provider.split(" ")[0].slice(0, 2).toUpperCase()}</div>
-                <div className="score"><span>{index === 0 ? "Meilleur match" : "Score"}</span><strong>{dataset.score}</strong><small>/100</small></div>
+                <div className="score"><span>{globalIndex === 0 ? "Meilleur match" : "Score"}</span><strong>{dataset.score}</strong><small>/100</small></div>
               </div>
               <div className="tag-row">{dataset.tags.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
               <h3>{dataset.title}</h3>
@@ -177,11 +319,21 @@ export default function Home() {
                 <button className="view" onClick={() => setSelected(dataset)}>Voir la fiche <span>→</span></button>
                 <button className={compare.includes(dataset.id) ? "icon-button active" : "icon-button"} onClick={() => toggleCompare(dataset.id)} aria-label={`Comparer ${dataset.title}`} title="Comparer">⇄</button>
                 <button className={favorites.includes(dataset.id) ? "icon-button active heart" : "icon-button heart"} onClick={() => toggleFavorite(dataset.id)} aria-label={`Ajouter ${dataset.title} aux favoris`} title="Favori">{favorites.includes(dataset.id) ? "♥" : "♡"}</button>
+                {isAdmin && <button className="icon-button" onClick={() => openEditForm(dataset)} aria-label={`Éditer ${dataset.title}`} title="Éditer">✎</button>}
+                {isAdmin && <button className="icon-button danger" onClick={() => handleDelete(dataset)} aria-label={`Supprimer ${dataset.title}`} title="Supprimer">✕</button>}
               </div>
             </article>
-          ))}
+            );
+          })}
         </div>}
         {!datasetsLoading && !datasetsError && results.length === 0 && <div className="empty"><span>⌕</span><h3>Aucun dataset ne correspond exactement.</h3><p>Essayez un domaine plus large ou réinitialisez les filtres.</p></div>}
+        {!datasetsLoading && !datasetsError && results.length > 0 && totalPages > 1 && (
+          <div className="pagination">
+            <button onClick={() => setPage(currentPage - 1)} disabled={currentPage === 1}>← Précédent</button>
+            <span>Page {currentPage} / {totalPages}</span>
+            <button onClick={() => setPage(currentPage + 1)} disabled={currentPage === totalPages}>Suivant →</button>
+          </div>
+        )}
       </section>
 
       <section className="how" id="how">
@@ -208,6 +360,67 @@ export default function Home() {
       </section></div>}
 
       {showCompare && <div className="modal-backdrop" onMouseDown={() => setShowCompare(false)}><section className="compare-modal" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="compare-title"><button className="modal-close" onClick={() => setShowCompare(false)} aria-label="Fermer">×</button><span className="section-kicker">COMPARATEUR</span><h2 id="compare-title">Comparez avant de choisir</h2><div className="comparison-table"><div className="comparison-labels"><span>Dataset</span><span>Score</span><span>Formats</span><span>Licence</span><span>Couverture</span><span>Accès</span></div>{comparison.map((item) => <div className="comparison-column" key={item.id}><strong>{item.title}</strong><span className="compare-score">{item.score}/100</span><span>{item.formats.join(", ")}</span><span>{item.license}</span><span>{item.country}<small>{item.period}</small></span><span>{item.access}</span><a href={item.url} target="_blank" rel="noreferrer">Ouvrir ↗</a></div>)}</div></section></div>}
+
+      {showAdminPanel && (
+        <div className="modal-backdrop" onMouseDown={() => setShowAdminPanel(false)}>
+          <section className="admin-modal" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="admin-title">
+            <button className="modal-close" onClick={() => setShowAdminPanel(false)} aria-label="Fermer">×</button>
+            <span className="section-kicker">ESPACE ADMIN</span>
+            <h2 id="admin-title">{isAdmin ? "Connecté" : "Se connecter"}</h2>
+            <p>Collez votre clé API (<code>DATAFINDER_API_KEY</code>) pour activer la création, l&apos;édition et la suppression de datasets.</p>
+            <form onSubmit={(event) => { event.preventDefault(); setApiKey(apiKeyDraft.trim()); setShowAdminPanel(false); }}>
+              <input
+                type="password"
+                value={apiKeyDraft}
+                onChange={(event) => setApiKeyDraft(event.target.value)}
+                placeholder="Clé API"
+                aria-label="Clé API"
+                autoFocus
+              />
+              <div className="modal-actions">
+                {isAdmin && <button type="button" onClick={() => { setApiKey(""); setApiKeyDraft(""); setShowAdminPanel(false); }}>Se déconnecter</button>}
+                <button type="submit" className="primary">Enregistrer</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {formModal && (
+        <div className="modal-backdrop" onMouseDown={() => setFormModal(null)}>
+          <section className="detail-modal" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="form-title">
+            <button className="modal-close" onClick={() => setFormModal(null)} aria-label="Fermer">×</button>
+            <span className="section-kicker">{formModal.mode === "create" ? "NOUVEAU DATASET" : "MODIFIER LE DATASET"}</span>
+            <h2 id="form-title">{formModal.mode === "create" ? "Ajouter un dataset" : formModal.dataset?.title}</h2>
+            <form className="dataset-form" onSubmit={submitForm}>
+              <label>Titre<input value={formState.title} onChange={(e) => setFormState({ ...formState, title: e.target.value })} required /></label>
+              <label>Fournisseur<input value={formState.provider} onChange={(e) => setFormState({ ...formState, provider: e.target.value })} required /></label>
+              <label>Type de source<input value={formState.sourceType} onChange={(e) => setFormState({ ...formState, sourceType: e.target.value })} placeholder="Gouvernement, Institution, API, Recherche…" required /></label>
+              <label>Domaine<input value={formState.domain} onChange={(e) => setFormState({ ...formState, domain: e.target.value })} required /></label>
+              <label>Pays / couverture<input value={formState.country} onChange={(e) => setFormState({ ...formState, country: e.target.value })} required /></label>
+              <label>Période<input value={formState.period} onChange={(e) => setFormState({ ...formState, period: e.target.value })} required /></label>
+              <label>Licence<input value={formState.license} onChange={(e) => setFormState({ ...formState, license: e.target.value })} required /></label>
+              <label>Fréquence de mise à jour<input value={formState.update} onChange={(e) => setFormState({ ...formState, update: e.target.value })} required /></label>
+              <label>Taille<input value={formState.size} onChange={(e) => setFormState({ ...formState, size: e.target.value })} required /></label>
+              <label>Accès<input value={formState.access} onChange={(e) => setFormState({ ...formState, access: e.target.value })} required /></label>
+              <label>Score (0-100)<input type="number" min={0} max={100} value={formState.score} onChange={(e) => setFormState({ ...formState, score: e.target.value })} required /></label>
+              <label>Couleur d&apos;accent<input type="color" value={formState.accent} onChange={(e) => setFormState({ ...formState, accent: e.target.value })} /></label>
+              <label className="full">URL source<input type="url" value={formState.url} onChange={(e) => setFormState({ ...formState, url: e.target.value })} required /></label>
+              <label className="full">Description<textarea value={formState.description} onChange={(e) => setFormState({ ...formState, description: e.target.value })} required /></label>
+              <label className="full">Formats (séparés par des virgules)<input value={formState.formats} onChange={(e) => setFormState({ ...formState, formats: e.target.value })} placeholder="CSV, API, JSON" required /></label>
+              <label className="full">Variables (séparées par des virgules)<input value={formState.variables} onChange={(e) => setFormState({ ...formState, variables: e.target.value })} placeholder="pays, année, valeur" required /></label>
+              <label className="full">Tags (séparés par des virgules)<input value={formState.tags} onChange={(e) => setFormState({ ...formState, tags: e.target.value })} placeholder="Source officielle, Recherche" required /></label>
+
+              {formError && <p className="form-error full">{formError}</p>}
+
+              <div className="modal-actions full">
+                <button type="button" onClick={() => setFormModal(null)}>Annuler</button>
+                <button type="submit" className="primary" disabled={formSubmitting}>{formSubmitting ? "Enregistrement…" : "Enregistrer"}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
