@@ -1,0 +1,8 @@
+services:
+  datafinder:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATAFINDER_PUBLIC_URL: "http://localhost:3000"

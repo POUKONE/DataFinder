@@ -1,0 +1,9 @@
+.git
+.next
+dist
+.wrangler
+node_modules
+npm-debug.log
+.env*
+outputs
+work
