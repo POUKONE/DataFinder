@@ -60,6 +60,8 @@ BRAVE_SEARCH_API_KEY=votre_cle
 
 La route `GET /api/web-search?q=...` est publique (lecture seule, comme `GET /api/datasets`) et ne nécessite pas `DATAFINDER_API_KEY`. Sans `BRAVE_SEARCH_API_KEY`, elle répond `503`.
 
+Comme cette route déclenche un appel payant à l'API Brave, elle est protégée par un rate limiting en mémoire (par IP, remis à zéro si le serveur redémarre) : 10 requêtes par minute par défaut, ajustable via `WEB_SEARCH_RATE_LIMIT` (nombre de requêtes) et `WEB_SEARCH_RATE_WINDOW_MS` (durée de la fenêtre en millisecondes). Au-delà, la route répond `429` avec un en-tête `Retry-After`.
+
 ## Base de données
 
 Les datasets sont persistés dans une base SQLite via le module natif `node:sqlite` (aucune dépendance externe). Par défaut, le fichier est créé dans `data/datafinder.db` (chemin relatif au répertoire de travail), configurable via la variable d'environnement `DATAFINDER_DB_PATH`.
