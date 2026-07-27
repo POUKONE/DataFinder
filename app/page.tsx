@@ -121,6 +121,14 @@ export default function Home() {
     setFormModal({ mode: "create" });
   }
 
+  function openCreateFormFromWebResult(result: WebResult) {
+    let provider = "";
+    try { provider = new URL(result.url).hostname.replace(/^www\./, ""); } catch { /* URL invalide, laisser vide */ }
+    setFormState({ ...emptyForm, title: result.title, description: result.description, url: result.url, provider });
+    setFormError(null);
+    setFormModal({ mode: "create" });
+  }
+
   function openEditForm(dataset: Dataset) {
     setFormState(datasetToForm(dataset));
     setFormError(null);
@@ -374,11 +382,15 @@ export default function Home() {
           {!webSearching && !webError && webResults.length > 0 && (
             <div className="web-results-list">
               {webResults.map((result) => (
-                <a className="web-result" key={result.url} href={result.url} target="_blank" rel="noreferrer">
+                <article className="web-result" key={result.url}>
                   <span className="web-result-url">{result.url}</span>
                   <h3>{result.title}</h3>
                   <p>{result.description}</p>
-                </a>
+                  <div className="web-result-actions">
+                    <a href={result.url} target="_blank" rel="noreferrer">Ouvrir la source ↗</a>
+                    {isAdmin && <button onClick={() => openCreateFormFromWebResult(result)}>+ Ajouter au catalogue</button>}
+                  </div>
+                </article>
               ))}
             </div>
           )}
