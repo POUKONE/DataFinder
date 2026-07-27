@@ -29,6 +29,8 @@ const dbPath = process.env.DATAFINDER_DB_PATH || join(process.cwd(), "data", "da
 mkdirSync(dirname(dbPath), { recursive: true });
 
 const db = new DatabaseSync(dbPath);
+db.exec("PRAGMA journal_mode = WAL");
+db.exec("PRAGMA busy_timeout = 5000");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS datasets (
@@ -109,9 +111,16 @@ if (count === 0) {
   for (const dataset of seedDatasets) insertDataset(dataset);
 }
 
-export function dbListDatasets(): Dataset[] {
-  const rows = db.prepare("SELECT * FROM datasets ORDER BY score DESC").all() as unknown as DatasetRow[];
+export function dbListDatasets(pagination: { limit: number; offset: number }): Dataset[] {
+  const rows = db
+    .prepare("SELECT * FROM datasets ORDER BY score DESC LIMIT ? OFFSET ?")
+    .all(pagination.limit, pagination.offset) as unknown as DatasetRow[];
   return rows.map(rowToDataset);
+}
+
+export function dbCountDatasets(): number {
+  const { count } = db.prepare("SELECT COUNT(*) as count FROM datasets").get() as { count: number };
+  return count;
 }
 
 export function dbGetDataset(id: string): Dataset | undefined {

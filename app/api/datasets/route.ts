@@ -1,10 +1,24 @@
 import { checkApiKey } from "@/lib/auth";
-import { createDataset, listDatasets, validateDatasetInput, type DatasetInput } from "@/lib/datasets";
+import { createDataset, DEFAULT_PAGE_SIZE, listDatasets, MAX_PAGE_SIZE, validateDatasetInput, type DatasetInput } from "@/lib/datasets";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  return Response.json(listDatasets());
+export function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const pageParam = searchParams.get("page");
+  const pageSizeParam = searchParams.get("pageSize");
+
+  const page = pageParam === null ? 1 : Number(pageParam);
+  const pageSize = pageSizeParam === null ? DEFAULT_PAGE_SIZE : Number(pageSizeParam);
+
+  if (!Number.isInteger(page) || page < 1) {
+    return Response.json({ error: 'Le paramètre "page" doit être un entier supérieur ou égal à 1.' }, { status: 400 });
+  }
+  if (!Number.isInteger(pageSize) || pageSize < 1) {
+    return Response.json({ error: 'Le paramètre "pageSize" doit être un entier supérieur ou égal à 1.' }, { status: 400 });
+  }
+
+  return Response.json(listDatasets(page, Math.min(pageSize, MAX_PAGE_SIZE)));
 }
 
 export async function POST(request: Request) {

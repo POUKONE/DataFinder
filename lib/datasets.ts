@@ -1,4 +1,7 @@
-import { dbDatasetExists, dbDeleteDataset, dbGetDataset, dbInsertDataset, dbListDatasets, dbUpdateDataset } from "./db";
+import { dbCountDatasets, dbDatasetExists, dbDeleteDataset, dbGetDataset, dbInsertDataset, dbListDatasets, dbUpdateDataset } from "./db";
+import { DEFAULT_PAGE_SIZE } from "./pagination";
+
+export { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "./pagination";
 
 export type Dataset = {
   id: string;
@@ -23,6 +26,14 @@ export type Dataset = {
 
 export type DatasetInput = Omit<Dataset, "id">;
 
+export type PaginatedDatasets = {
+  data: Dataset[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
 function slugify(value: string): string {
   return value
     .normalize("NFD")
@@ -42,8 +53,11 @@ function uniqueId(base: string, exists: (id: string) => boolean): string {
   return candidate;
 }
 
-export function listDatasets(): Dataset[] {
-  return dbListDatasets();
+export function listDatasets(page = 1, pageSize = DEFAULT_PAGE_SIZE): PaginatedDatasets {
+  const total = dbCountDatasets();
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const data = dbListDatasets({ limit: pageSize, offset: (page - 1) * pageSize });
+  return { data, page, pageSize, total, totalPages };
 }
 
 export function getDataset(id: string): Dataset | undefined {

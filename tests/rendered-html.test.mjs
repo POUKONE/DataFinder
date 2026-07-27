@@ -20,6 +20,7 @@ test("contient les surfaces principales de DataFinder", async () => {
   assert.match(db, /node:sqlite/);
   assert.match(apiRoute, /GET/);
   assert.match(apiRoute, /checkApiKey/);
+  assert.match(apiRoute, /pageSize/);
   assert.match(apiIdRoute, /checkApiKey/);
   assert.match(auth, /DATAFINDER_API_KEY/);
   assert.match(layout, /DATAFINDER_PUBLIC_URL/);

@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Dataset } from "@/lib/datasets";
+import type { Dataset, PaginatedDatasets } from "@/lib/datasets";
+import { MAX_PAGE_SIZE } from "@/lib/pagination";
 
 const popular = ["Immobilier en France", "Chômage des jeunes", "Météo historique", "Fraude bancaire"];
 
@@ -37,13 +38,13 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/datasets")
+    fetch(`/api/datasets?pageSize=${MAX_PAGE_SIZE}`)
       .then((response) => {
         if (!response.ok) throw new Error("request failed");
         return response.json();
       })
-      .then((data: Dataset[]) => {
-        if (!cancelled) setDatasets(data);
+      .then((payload: PaginatedDatasets) => {
+        if (!cancelled) setDatasets(payload.data);
       })
       .catch(() => {
         if (!cancelled) setDatasetsError(true);
