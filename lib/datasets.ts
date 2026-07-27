@@ -19,7 +19,9 @@ export type Dataset = {
   accent: string;
 };
 
-export const datasets: Dataset[] = [
+export type DatasetInput = Omit<Dataset, "id">;
+
+const datasets: Dataset[] = [
   {
     id: "dvf",
     title: "Demandes de valeurs foncières",
@@ -141,3 +143,83 @@ export const datasets: Dataset[] = [
     accent: "#9365d8",
   },
 ];
+
+function slugify(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "dataset";
+}
+
+function uniqueId(base: string): string {
+  let candidate = base;
+  let suffix = 2;
+  while (datasets.some((dataset) => dataset.id === candidate)) {
+    candidate = `${base}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+export function listDatasets(): Dataset[] {
+  return datasets;
+}
+
+export function getDataset(id: string): Dataset | undefined {
+  return datasets.find((dataset) => dataset.id === id);
+}
+
+export function createDataset(input: DatasetInput & { id?: string }): Dataset {
+  const id = input.id ? uniqueId(slugify(input.id)) : uniqueId(slugify(input.title));
+  const dataset: Dataset = { ...input, id };
+  datasets.push(dataset);
+  return dataset;
+}
+
+export function updateDataset(id: string, input: DatasetInput): Dataset | undefined {
+  const index = datasets.findIndex((dataset) => dataset.id === id);
+  if (index === -1) return undefined;
+  const updated: Dataset = { ...input, id };
+  datasets[index] = updated;
+  return updated;
+}
+
+export function deleteDataset(id: string): boolean {
+  const index = datasets.findIndex((dataset) => dataset.id === id);
+  if (index === -1) return false;
+  datasets.splice(index, 1);
+  return true;
+}
+
+const REQUIRED_STRING_FIELDS = [
+  "title", "provider", "sourceType", "description", "domain",
+  "country", "period", "license", "update", "size", "access", "url", "accent",
+] as const;
+
+const REQUIRED_ARRAY_FIELDS = ["formats", "variables", "tags"] as const;
+
+export function validateDatasetInput(body: unknown): string[] {
+  const errors: string[] = [];
+  if (typeof body !== "object" || body === null) {
+    return ["Le corps de la requête doit être un objet JSON."];
+  }
+  const record = body as Record<string, unknown>;
+
+  for (const field of REQUIRED_STRING_FIELDS) {
+    if (typeof record[field] !== "string" || record[field] === "") {
+      errors.push(`Le champ "${field}" est requis et doit être une chaîne non vide.`);
+    }
+  }
+  for (const field of REQUIRED_ARRAY_FIELDS) {
+    const value = record[field];
+    if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+      errors.push(`Le champ "${field}" est requis et doit être un tableau de chaînes.`);
+    }
+  }
+  if (typeof record.score !== "number" || Number.isNaN(record.score) || record.score < 0 || record.score > 100) {
+    errors.push('Le champ "score" est requis et doit être un nombre entre 0 et 100.');
+  }
+  return errors;
+}
