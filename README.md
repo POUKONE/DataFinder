@@ -51,7 +51,7 @@ Sans `DATAFINDER_API_KEY` configurée côté serveur, ces routes répondent `503
 
 En plus du catalogue DataFinder, la barre de recherche interroge aussi le web via l'API [Brave Search](https://brave.com/search/api/). Cette fonctionnalité est optionnelle : sans clé configurée, seuls les résultats du catalogue s'affichent.
 
-1. Créer un compte sur [brave.com/search/api](https://brave.com/search/api/) (offre gratuite : 2 000 requêtes/mois).
+1. Créer un compte sur [api-dashboard.search.brave.com/register](https://api-dashboard.search.brave.com/register) (une carte bancaire est demandée pour vérification anti-fraude, non débitée dans la limite du crédit gratuit), puis choisir le plan « Search » ($5 de crédit gratuit par mois, environ 1 000 requêtes).
 2. Ajouter la clé obtenue dans `.env` :
 
 ```
