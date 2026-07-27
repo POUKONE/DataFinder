@@ -79,4 +79,6 @@ npm test
 npm run lint
 ```
 
+`npm test` lance le build puis exécute la suite `node:test` (via `tsx`) : le smoke test de rendu ainsi que les tests unitaires du CRUD et de la pagination (`tests/datasets-crud.test.ts`, `tests/datasets-pagination.test.ts`), exécutés contre une base SQLite en mémoire (`DATAFINDER_DB_PATH=:memory:`).
+
 La route `/api/health` retourne un état JSON et peut être utilisée par Docker, votre orchestrateur ou votre hébergeur.
