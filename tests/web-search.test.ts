@@ -56,4 +56,25 @@ describe("searchWeb", () => {
     const results = await searchWeb("test");
     assert.deepEqual(results, []);
   });
+
+  test("décode les entités HTML nommées et numériques", async () => {
+    mockFetch({
+      ok: true,
+      json: async () => ({
+        web: {
+          results: [
+            {
+              title: "Qualit&#x27;air &amp; données",
+              url: "https://example.com/a",
+              description: "Guillemets &quot;typographiques&quot;, espace&nbsp;insécable, apostrophe&#39; et &lt;balise&gt; textuelle.",
+            },
+          ],
+        },
+      }),
+    });
+
+    const results = await searchWeb("test");
+    assert.equal(results[0].title, "Qualit'air & données");
+    assert.equal(results[0].description, 'Guillemets "typographiques", espace insécable, apostrophe\' et <balise> textuelle.');
+  });
 });
