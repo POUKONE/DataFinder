@@ -1,19 +1,12 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import type { Dataset, DatasetInput, PaginatedDatasets } from "@/lib/datasets";
-import { MAX_PAGE_SIZE } from "@/lib/pagination";
+import { FormEvent, useEffect, useState } from "react";
+import type { CatalogStats, Dataset, DatasetInput, PaginatedDatasets } from "@/lib/datasets";
 import type { WebResult } from "@/lib/webSearch";
 
 const popular = ["Immobilier en France", "Chômage des jeunes", "Météo historique", "Fraude bancaire"];
 const RESULTS_PER_PAGE = 6;
-
-function normalizeSearchText(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase();
-}
+const EMPTY_STATS: CatalogStats = { datasets: 0, providers: 0, domains: 0, licenses: 0 };
 
 type DatasetFormState = {
   title: string; provider: string; sourceType: string; description: string; domain: string;
@@ -50,15 +43,19 @@ function formToInput(form: DatasetFormState): DatasetInput {
 }
 
 export default function Home() {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [pageData, setPageData] = useState<Dataset[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [datasetsLoading, setDatasetsLoading] = useState(true);
   const [datasetsError, setDatasetsError] = useState(false);
+  const [stats, setStats] = useState<CatalogStats>(EMPTY_STATS);
   const [query, setQuery] = useState("");
   const [searched, setSearched] = useState(false);
   const [format, setFormat] = useState("Tous les formats");
   const [source, setSource] = useState("Toutes les sources");
   const [license, setLicense] = useState("Toutes les licences");
   const [compare, setCompare] = useState<string[]>([]);
+  const [comparisonData, setComparisonData] = useState<Dataset[]>([]);
   const [showCompare, setShowCompare] = useState(false);
   const [selected, setSelected] = useState<Dataset | null>(null);
   const [page, setPage] = useState(1);
@@ -93,14 +90,25 @@ export default function Home() {
     else window.sessionStorage.removeItem("datafinder-api-key");
   }, [apiKey, apiKeyLoaded]);
 
-  async function loadDatasets() {
+  async function loadDatasets(currentQuery: string, currentFormat: string, currentSource: string, currentLicense: string, currentPage: number) {
     setDatasetsLoading(true);
     setDatasetsError(false);
     try {
-      const response = await fetch(`/api/datasets?pageSize=${MAX_PAGE_SIZE}`);
+      const params = new URLSearchParams();
+      if (currentQuery.trim()) params.set("q", currentQuery.trim());
+      if (currentFormat !== "Tous les formats") params.set("format", currentFormat);
+      if (currentSource !== "Toutes les sources") params.set("source", currentSource);
+      if (currentLicense !== "Toutes les licences") params.set("license", currentLicense);
+      params.set("page", String(currentPage));
+      params.set("pageSize", String(RESULTS_PER_PAGE));
+
+      const response = await fetch(`/api/datasets?${params.toString()}`);
       if (!response.ok) throw new Error("request failed");
       const payload: PaginatedDatasets = await response.json();
-      setDatasets(payload.data);
+      setPageData(payload.data);
+      setTotal(payload.total);
+      setTotalPages(payload.totalPages);
+      if (payload.page > payload.totalPages) setPage(payload.totalPages);
     } catch {
       setDatasetsError(true);
     } finally {
@@ -108,7 +116,24 @@ export default function Home() {
     }
   }
 
-  useEffect(() => { window.setTimeout(() => { loadDatasets(); }, 0); }, []);
+  async function loadStats() {
+    try {
+      const response = await fetch("/api/datasets/stats");
+      if (!response.ok) throw new Error("request failed");
+      setStats(await response.json());
+    } catch {
+      // Les stats du bandeau restent à leur dernière valeur connue en cas d'échec.
+    }
+  }
+
+  useEffect(() => { window.setTimeout(() => { loadStats(); }, 0); }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      loadDatasets(query, format, source, license, page);
+    }, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [query, format, source, license, page]);
 
   function handleUnauthorized() {
     setApiKey("");
@@ -160,7 +185,7 @@ export default function Home() {
         return;
       }
       setFormModal(null);
-      await loadDatasets();
+      await Promise.all([loadDatasets(query, format, source, license, page), loadStats()]);
     } catch {
       setFormError("Impossible de contacter le serveur.");
     } finally {
@@ -182,30 +207,8 @@ export default function Home() {
       window.alert("La suppression a échoué.");
       return;
     }
-    await loadDatasets();
+    await Promise.all([loadDatasets(query, format, source, license, page), loadStats()]);
   }
-
-  const stats = useMemo(() => ({
-    datasets: datasets.length,
-    providers: new Set(datasets.map((d) => d.provider)).size,
-    domains: new Set(datasets.map((d) => d.domain)).size,
-    licenses: new Set(datasets.map((d) => d.license)).size,
-  }), [datasets]);
-
-  const results = useMemo(() => {
-    const words = normalizeSearchText(query.trim()).split(/\s+/).filter(Boolean);
-    return datasets.filter((dataset) => {
-      const searchable = normalizeSearchText([dataset.title, dataset.provider, dataset.description, dataset.domain, dataset.country, ...dataset.variables].join(" "));
-      return (words.length === 0 || words.every((word) => searchable.includes(word))) &&
-        (format === "Tous les formats" || dataset.formats.includes(format)) &&
-        (source === "Toutes les sources" || dataset.sourceType === source) &&
-        (license === "Toutes les licences" || dataset.license.includes(license));
-    }).sort((a, b) => b.score - a.score);
-  }, [datasets, query, format, source, license]);
-
-  const totalPages = Math.max(1, Math.ceil(results.length / RESULTS_PER_PAGE));
-  const currentPage = Math.min(page, totalPages);
-  const pagedResults = results.slice((currentPage - 1) * RESULTS_PER_PAGE, currentPage * RESULTS_PER_PAGE);
 
   useEffect(() => { window.setTimeout(() => setPage(1), 0); }, [query, format, source, license]);
 
@@ -254,7 +257,12 @@ export default function Home() {
     setCompare((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length < 3 ? [...current, id] : current);
   }
 
-  const comparison = datasets.filter((item) => compare.includes(item.id));
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all(compare.map((id) => fetch(`/api/datasets/${id}`).then((response) => (response.ok ? response.json() : null))))
+      .then((items) => { if (!cancelled) setComparisonData(items.filter((item): item is Dataset => item !== null)); });
+    return () => { cancelled = true; };
+  }, [compare]);
 
   return (
     <main>
@@ -322,7 +330,7 @@ export default function Home() {
 
       <section className="discover" id="discover">
         <div className="section-heading">
-          <div><span className="section-kicker">SÉLECTION DATAFINDER</span><h2>{searched ? `${results.length} résultats pertinents` : "Des données prêtes à servir"}</h2></div>
+          <div><span className="section-kicker">SÉLECTION DATAFINDER</span><h2>{searched ? `${total} résultats pertinents` : "Des données prêtes à servir"}</h2></div>
           <div className="heading-actions">
             {isAdmin && <button className="add-dataset" onClick={openCreateForm}>+ Ajouter un dataset</button>}
             {searched && <button className="reset" onClick={() => { setQuery(""); setFormat("Tous les formats"); setSource("Toutes les sources"); setLicense("Toutes les licences"); }}>Réinitialiser les filtres</button>}
@@ -333,8 +341,8 @@ export default function Home() {
         {datasetsError && <div className="empty"><span>⌕</span><h3>Impossible de charger les datasets.</h3><p>Vérifiez que l&apos;API /api/datasets répond, puis rechargez la page.</p></div>}
 
         {!datasetsLoading && !datasetsError && <div className="results-grid" id="results">
-          {pagedResults.map((dataset, index) => {
-            const globalIndex = (currentPage - 1) * RESULTS_PER_PAGE + index;
+          {pageData.map((dataset, index) => {
+            const globalIndex = (page - 1) * RESULTS_PER_PAGE + index;
             return (
             <article className="dataset-card" key={dataset.id} style={{ "--accent": dataset.accent } as React.CSSProperties}>
               <div className="card-top">
@@ -359,12 +367,12 @@ export default function Home() {
             );
           })}
         </div>}
-        {!datasetsLoading && !datasetsError && results.length === 0 && <div className="empty"><span>⌕</span><h3>Aucun dataset ne correspond exactement.</h3><p>Essayez un domaine plus large ou réinitialisez les filtres.</p></div>}
-        {!datasetsLoading && !datasetsError && results.length > 0 && totalPages > 1 && (
+        {!datasetsLoading && !datasetsError && total === 0 && <div className="empty"><span>⌕</span><h3>Aucun dataset ne correspond exactement.</h3><p>Essayez un domaine plus large ou réinitialisez les filtres.</p></div>}
+        {!datasetsLoading && !datasetsError && total > 0 && totalPages > 1 && (
           <div className="pagination">
-            <button onClick={() => setPage(currentPage - 1)} disabled={currentPage === 1}>← Précédent</button>
-            <span>Page {currentPage} / {totalPages}</span>
-            <button onClick={() => setPage(currentPage + 1)} disabled={currentPage === totalPages}>Suivant →</button>
+            <button onClick={() => setPage(page - 1)} disabled={page === 1}>← Précédent</button>
+            <span>Page {page} / {totalPages}</span>
+            <button onClick={() => setPage(page + 1)} disabled={page === totalPages}>Suivant →</button>
           </div>
         )}
       </section>
@@ -420,7 +428,7 @@ export default function Home() {
         <div className="modal-actions"><a href={selected.url} target="_blank" rel="noreferrer">Accéder à la source officielle ↗</a></div>
       </section></div>}
 
-      {showCompare && <div className="modal-backdrop" onMouseDown={() => setShowCompare(false)}><section className="compare-modal" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="compare-title"><button className="modal-close" onClick={() => setShowCompare(false)} aria-label="Fermer">×</button><span className="section-kicker">COMPARATEUR</span><h2 id="compare-title">Comparez avant de choisir</h2><div className="comparison-table"><div className="comparison-labels"><span>Dataset</span><span>Score</span><span>Formats</span><span>Licence</span><span>Couverture</span><span>Accès</span></div>{comparison.map((item) => <div className="comparison-column" key={item.id}><strong>{item.title}</strong><span className="compare-score">{item.score}/100</span><span>{item.formats.join(", ")}</span><span>{item.license}</span><span>{item.country}<small>{item.period}</small></span><span>{item.access}</span><a href={item.url} target="_blank" rel="noreferrer">Ouvrir ↗</a></div>)}</div></section></div>}
+      {showCompare && <div className="modal-backdrop" onMouseDown={() => setShowCompare(false)}><section className="compare-modal" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="compare-title"><button className="modal-close" onClick={() => setShowCompare(false)} aria-label="Fermer">×</button><span className="section-kicker">COMPARATEUR</span><h2 id="compare-title">Comparez avant de choisir</h2><div className="comparison-table"><div className="comparison-labels"><span>Dataset</span><span>Score</span><span>Formats</span><span>Licence</span><span>Couverture</span><span>Accès</span></div>{comparisonData.map((item) => <div className="comparison-column" key={item.id}><strong>{item.title}</strong><span className="compare-score">{item.score}/100</span><span>{item.formats.join(", ")}</span><span>{item.license}</span><span>{item.country}<small>{item.period}</small></span><span>{item.access}</span><a href={item.url} target="_blank" rel="noreferrer">Ouvrir ↗</a></div>)}</div></section></div>}
 
       {showAdminPanel && (
         <div className="modal-backdrop" onMouseDown={() => setShowAdminPanel(false)}>

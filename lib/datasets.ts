@@ -1,4 +1,4 @@
-import { dbCountDatasets, dbDatasetExists, dbDeleteDataset, dbGetDataset, dbInsertDataset, dbListDatasets, dbUpdateDataset } from "./db";
+import { dbCatalogStats, dbDatasetExists, dbDeleteDataset, dbGetDataset, dbInsertDataset, dbListAllDatasets, dbUpdateDataset, type CatalogStats } from "./db";
 import { DEFAULT_PAGE_SIZE } from "./pagination";
 
 export { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from "./pagination";
@@ -34,6 +34,15 @@ export type PaginatedDatasets = {
   totalPages: number;
 };
 
+export type DatasetSearchParams = {
+  query?: string;
+  format?: string;
+  source?: string;
+  license?: string;
+};
+
+export type { CatalogStats } from "./db";
+
 function slugify(value: string): string {
   return value
     .normalize("NFD")
@@ -53,11 +62,39 @@ function uniqueId(base: string, exists: (id: string) => boolean): string {
   return candidate;
 }
 
-export function listDatasets(page = 1, pageSize = DEFAULT_PAGE_SIZE): PaginatedDatasets {
-  const total = dbCountDatasets();
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+// Filtre + trie côté serveur sur l'ensemble du catalogue avant de paginer,
+// pour que la recherche porte réellement sur tous les datasets (pas
+// seulement sur le premier lot chargé par le client).
+export function searchDatasets(params: DatasetSearchParams = {}, page = 1, pageSize = DEFAULT_PAGE_SIZE): PaginatedDatasets {
+  const words = normalizeSearchText((params.query ?? "").trim()).split(/\s+/).filter(Boolean);
+
+  const filtered = dbListAllDatasets().filter((dataset) => {
+    const searchable = normalizeSearchText([dataset.title, dataset.provider, dataset.description, dataset.domain, dataset.country, ...dataset.variables].join(" "));
+    return (words.length === 0 || words.every((word) => searchable.includes(word))) &&
+      (!params.format || dataset.formats.includes(params.format)) &&
+      (!params.source || dataset.sourceType === params.source) &&
+      (!params.license || dataset.license.includes(params.license));
+  }).sort((a, b) => b.score - a.score);
+
+  const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const data = dbListDatasets({ limit: pageSize, offset: (page - 1) * pageSize });
+  const data = filtered.slice((page - 1) * pageSize, page * pageSize);
   return { data, page, pageSize, total, totalPages };
+}
+
+export function listDatasets(page = 1, pageSize = DEFAULT_PAGE_SIZE): PaginatedDatasets {
+  return searchDatasets({}, page, pageSize);
+}
+
+export function getCatalogStats(): CatalogStats {
+  return dbCatalogStats();
 }
 
 export function getDataset(id: string): Dataset | undefined {

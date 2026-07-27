@@ -41,6 +41,24 @@ describe("GET /api/datasets", () => {
     const body = await response.json();
     assert.equal(body.total, 0);
   });
+
+  test("le paramètre q filtre les résultats", async () => {
+    await listPOST(new Request("http://localhost/api/datasets", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-admin-key" },
+      body: JSON.stringify(makeInput({ title: "Chômage des jeunes" })),
+    }));
+    await listPOST(new Request("http://localhost/api/datasets", {
+      method: "POST",
+      headers: { Authorization: "Bearer test-admin-key" },
+      body: JSON.stringify(makeInput({ title: "Météo historique" })),
+    }));
+
+    const response = listGET(new Request("http://localhost/api/datasets?q=chomage"));
+    const body = await response.json();
+    assert.equal(body.total, 1);
+    assert.equal(body.data[0].title, "Chômage des jeunes");
+  });
 });
 
 describe("POST /api/datasets", () => {

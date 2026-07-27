@@ -1,5 +1,5 @@
 import { checkApiKey } from "@/lib/auth";
-import { createDataset, DEFAULT_PAGE_SIZE, listDatasets, MAX_PAGE_SIZE, validateDatasetInput, type DatasetInput } from "@/lib/datasets";
+import { createDataset, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, searchDatasets, validateDatasetInput, type DatasetInput } from "@/lib/datasets";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +18,14 @@ export function GET(request: Request) {
     return Response.json({ error: 'Le paramètre "pageSize" doit être un entier supérieur ou égal à 1.' }, { status: 400 });
   }
 
-  return Response.json(listDatasets(page, Math.min(pageSize, MAX_PAGE_SIZE)));
+  const params = {
+    query: searchParams.get("q") ?? undefined,
+    format: searchParams.get("format") ?? undefined,
+    source: searchParams.get("source") ?? undefined,
+    license: searchParams.get("license") ?? undefined,
+  };
+
+  return Response.json(searchDatasets(params, page, Math.min(pageSize, MAX_PAGE_SIZE)));
 }
 
 export async function POST(request: Request) {
