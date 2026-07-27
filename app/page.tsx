@@ -257,7 +257,7 @@ export default function Home() {
           aria-label="Espace admin"
           title={isAdmin ? "Connecté en tant qu'admin" : "Se connecter en tant qu'admin"}
           onClick={() => { setApiKeyDraft(apiKey); setShowAdminPanel(true); }}
-        >PK</button>
+        ><span aria-hidden="true">⚙</span></button>
       </header>
 
       <section className="hero" id="top">

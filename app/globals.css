@@ -14,7 +14,7 @@ button { color: inherit; }
 .site-header nav { display: flex; align-items: center; gap: 32px; }
 .site-header nav a, .site-header nav button { border: 0; background: none; color: #556078; text-decoration: none; font-size: 14px; font-weight: 600; cursor: pointer; }
 .site-header nav a:hover, .site-header nav button:hover { color: var(--purple); }
-.avatar { width: 38px; height: 38px; border: 0; border-radius: 12px; background: #edeaff; color: var(--purple); font-weight: 800; cursor: pointer; }
+.avatar { width: 38px; height: 38px; border: 0; border-radius: 12px; background: #edeaff; color: var(--purple); font-weight: 800; cursor: pointer; display: grid; place-items: center; font-size: 17px; }
 .avatar-active { background: #e3f8e6; color: #1e9a4d; box-shadow: 0 0 0 2px #b9f0c4; }
 .hero { min-height: 570px; padding: 88px 24px 58px; text-align: center; background: radial-gradient(circle at 50% 8%, #f0edff 0, #f7f6ff 34%, #fbfbfd 68%); position: relative; overflow: hidden; }
 .hero > *:not(.hero-orb) { position: relative; z-index: 1; }
