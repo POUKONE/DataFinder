@@ -6,3 +6,8 @@ services:
       - "3000:3000"
     environment:
       DATAFINDER_PUBLIC_URL: "http://localhost:3000"
+    volumes:
+      - datafinder-data:/app/data
+
+volumes:
+  datafinder-data:

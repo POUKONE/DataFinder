@@ -34,6 +34,12 @@ docker compose up -d --build
 
 L'application écoute sur le port `3000`. Modifier `DATAFINDER_PUBLIC_URL` dans `compose.yaml` pour utiliser votre domaine public.
 
+## Base de données
+
+Les datasets sont persistés dans une base SQLite via le module natif `node:sqlite` (aucune dépendance externe). Par défaut, le fichier est créé dans `data/datafinder.db` (chemin relatif au répertoire de travail), configurable via la variable d'environnement `DATAFINDER_DB_PATH`.
+
+Avec Docker, ce chemin (`/app/data`) est monté sur un volume nommé (`datafinder-data` dans `compose.yaml`) afin que les données survivent aux redémarrages et reconstructions du conteneur.
+
 ## Reverse proxy Nginx
 
 ```nginx
