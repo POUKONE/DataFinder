@@ -1,5 +1,7 @@
 # DataFinder
 
+[![GitHub](https://img.shields.io/badge/GitHub-POUKONE%2FDataFinder-181717?logo=github)](https://github.com/POUKONE/DataFinder)
+
 Application Next.js autonome pour rechercher, filtrer, comparer et enregistrer des sources de données.
 
 ## Prérequis
