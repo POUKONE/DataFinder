@@ -23,16 +23,29 @@ Ouvrir ensuite `http://localhost:3000`.
 ```bash
 npm ci
 npm run build
-DATAFINDER_PUBLIC_URL=https://data.example.com npm start
+DATAFINDER_PUBLIC_URL=https://data.example.com DATAFINDER_API_KEY=une-cle-longue-et-aleatoire npm start
 ```
 
 ## Hébergement avec Docker
+
+Créer un fichier `.env` (voir `.env.example`) contenant au minimum `DATAFINDER_API_KEY`, puis :
 
 ```bash
 docker compose up -d --build
 ```
 
 L'application écoute sur le port `3000`. Modifier `DATAFINDER_PUBLIC_URL` dans `compose.yaml` pour utiliser votre domaine public.
+
+## Authentification API
+
+Les endpoints de lecture (`GET /api/datasets`, `GET /api/datasets/:id`) restent publics. Les endpoints d'écriture (`POST /api/datasets`, `PUT /api/datasets/:id`, `DELETE /api/datasets/:id`) exigent une clé API définie via la variable d'environnement `DATAFINDER_API_KEY`, envoyée dans l'en-tête `Authorization` :
+
+```bash
+curl -X DELETE https://data.example.com/api/datasets/mon-dataset \
+  -H "Authorization: Bearer $DATAFINDER_API_KEY"
+```
+
+Sans `DATAFINDER_API_KEY` configurée côté serveur, ces routes répondent `503`. Une clé absente ou invalide répond `401`.
 
 ## Base de données
 

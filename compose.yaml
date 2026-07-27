@@ -6,6 +6,7 @@ services:
       - "3000:3000"
     environment:
       DATAFINDER_PUBLIC_URL: "http://localhost:3000"
+      DATAFINDER_API_KEY: ${DATAFINDER_API_KEY:?Définissez DATAFINDER_API_KEY dans un fichier .env avant de lancer docker compose}
     volumes:
       - datafinder-data:/app/data
 

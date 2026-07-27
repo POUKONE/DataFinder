@@ -1,3 +1,4 @@
+import { checkApiKey } from "@/lib/auth";
 import { deleteDataset, getDataset, updateDataset, validateDatasetInput, type DatasetInput } from "@/lib/datasets";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,9 @@ export async function GET(_request: Request, { params }: RouteContext) {
 }
 
 export async function PUT(request: Request, { params }: RouteContext) {
+  const unauthorized = checkApiKey(request);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
 
   let body: unknown;
@@ -31,7 +35,10 @@ export async function PUT(request: Request, { params }: RouteContext) {
   return Response.json(updated);
 }
 
-export async function DELETE(_request: Request, { params }: RouteContext) {
+export async function DELETE(request: Request, { params }: RouteContext) {
+  const unauthorized = checkApiKey(request);
+  if (unauthorized) return unauthorized;
+
   const { id } = await params;
   const deleted = deleteDataset(id);
   if (!deleted) return Response.json({ error: "Dataset introuvable." }, { status: 404 });

@@ -1,3 +1,4 @@
+import { checkApiKey } from "@/lib/auth";
 import { createDataset, listDatasets, validateDatasetInput, type DatasetInput } from "@/lib/datasets";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,9 @@ export function GET() {
 }
 
 export async function POST(request: Request) {
+  const unauthorized = checkApiKey(request);
+  if (unauthorized) return unauthorized;
+
   let body: unknown;
   try {
     body = await request.json();
