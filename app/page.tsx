@@ -374,12 +374,12 @@ export default function Home() {
       {searched && webQuery && (
         <section className="web-results" id="web-results">
           <div className="section-heading">
-            <div><span className="section-kicker">RECHERCHE WEB</span><h2>Résultats pour « {webQuery} »</h2></div>
+            <div><span className="section-kicker">DATASETS TROUVÉS SUR LE WEB</span><h2>Résultats pour « {webQuery} »</h2></div>
           </div>
 
-          {webSearching && <div className="empty"><span>⌕</span><h3>Recherche sur le web…</h3></div>}
+          {webSearching && <div className="empty"><span>⌕</span><h3>Recherche de datasets sur le web…</h3></div>}
           {!webSearching && webError && <div className="empty"><span>⌕</span><h3>Recherche web indisponible</h3><p>{webError}</p></div>}
-          {!webSearching && !webError && webResults.length === 0 && <div className="empty"><span>⌕</span><h3>Aucun résultat web trouvé.</h3></div>}
+          {!webSearching && !webError && webResults.length === 0 && <div className="empty"><span>⌕</span><h3>Aucun dataset trouvé sur le web pour cette recherche.</h3></div>}
 
           {!webSearching && !webError && webResults.length > 0 && (
             <div className="web-results-list">
