@@ -1,8 +1,12 @@
 # DataFinder
 
 [![GitHub](https://img.shields.io/badge/GitHub-POUKONE%2FDataFinder-181717?logo=github)](https://github.com/POUKONE/DataFinder)
+[![CI](https://github.com/POUKONE/DataFinder/actions/workflows/ci.yml/badge.svg)](https://github.com/POUKONE/DataFinder/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Application Next.js autonome pour rechercher, filtrer, comparer et enregistrer des sources de données.
+
+Read this in [English](README.en.md).
 
 ## Prérequis
 
@@ -94,6 +98,12 @@ npm test
 npm run lint
 ```
 
-`npm test` lance le build puis exécute la suite `node:test` (via `tsx`) : le smoke test de rendu ainsi que les tests unitaires du CRUD et de la pagination (`tests/datasets-crud.test.ts`, `tests/datasets-pagination.test.ts`), exécutés contre une base SQLite en mémoire (`DATAFINDER_DB_PATH=:memory:`).
+`npm test` lance le build puis exécute la suite `node:test` (via `tsx`) : le smoke test de rendu ainsi que les tests unitaires du CRUD, de la pagination, de l'authentification, du rate limiting et de la recherche web, exécutés contre une base SQLite en mémoire (`DATAFINDER_DB_PATH=:memory:`) et un `fetch` simulé (aucun appel réseau réel, aucune consommation de quota Brave).
 
-La route `/api/health` retourne un état JSON et peut être utilisée par Docker, votre orchestrateur ou votre hébergeur.
+Ces vérifications tournent aussi automatiquement sur GitHub Actions à chaque push et pull request (voir `.github/workflows/ci.yml`).
+
+La route `/api/health` vérifie que la base SQLite répond réellement (`SELECT 1`) et retourne `200` (`status: "ok"`) ou `503` (`status: "error"`) en conséquence ; elle peut être utilisée par Docker, votre orchestrateur ou votre hébergeur.
+
+## Licence
+
+[MIT](LICENSE) © 2026 POUKONE
