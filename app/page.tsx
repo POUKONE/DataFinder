@@ -8,6 +8,13 @@ import type { WebResult } from "@/lib/webSearch";
 const popular = ["Immobilier en France", "Chômage des jeunes", "Météo historique", "Fraude bancaire"];
 const RESULTS_PER_PAGE = 6;
 
+function normalizeSearchText(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
 type DatasetFormState = {
   title: string; provider: string; sourceType: string; description: string; domain: string;
   country: string; period: string; formats: string; license: string; update: string;
@@ -188,9 +195,9 @@ export default function Home() {
   }
 
   const results = useMemo(() => {
-    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const words = normalizeSearchText(query.trim()).split(/\s+/).filter(Boolean);
     return datasets.filter((dataset) => {
-      const searchable = [dataset.title, dataset.provider, dataset.description, dataset.domain, dataset.country, ...dataset.variables].join(" ").toLowerCase();
+      const searchable = normalizeSearchText([dataset.title, dataset.provider, dataset.description, dataset.domain, dataset.country, ...dataset.variables].join(" "));
       return (words.length === 0 || words.every((word) => searchable.includes(word))) &&
         (format === "Tous les formats" || dataset.formats.includes(format)) &&
         (source === "Toutes les sources" || dataset.sourceType === source) &&
