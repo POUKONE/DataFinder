@@ -177,6 +177,13 @@ export default function Home() {
     await loadDatasets();
   }
 
+  const stats = useMemo(() => ({
+    datasets: datasets.length,
+    providers: new Set(datasets.map((d) => d.provider)).size,
+    domains: new Set(datasets.map((d) => d.domain)).size,
+    licenses: new Set(datasets.map((d) => d.license)).size,
+  }), [datasets]);
+
   const results = useMemo(() => {
     const words = normalizeSearchText(query.trim()).split(/\s+/).filter(Boolean);
     return datasets.filter((dataset) => {
@@ -299,10 +306,10 @@ export default function Home() {
       </section>
 
       <section className="trust-strip" aria-label="Indicateurs DataFinder">
-        <div><strong>240K+</strong><span>datasets indexés</span></div>
-        <div><strong>1 200+</strong><span>sources vérifiées</span></div>
-        <div><strong>96%</strong><span>de liens actifs</span></div>
-        <div><strong>18</strong><span>domaines couverts</span></div>
+        <div><strong>{stats.datasets}</strong><span>datasets indexés</span></div>
+        <div><strong>{stats.providers}</strong><span>sources vérifiées</span></div>
+        <div><strong>{stats.licenses}</strong><span>licences différentes</span></div>
+        <div><strong>{stats.domains}</strong><span>domaines couverts</span></div>
       </section>
 
       <section className="discover" id="discover">
