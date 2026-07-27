@@ -1,0 +1,22 @@
+import { searchWeb } from "@/lib/webSearch";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const query = searchParams.get("q")?.trim();
+
+  if (!query) {
+    return Response.json({ error: 'Le paramètre "q" est requis.' }, { status: 400 });
+  }
+  if (!process.env.BRAVE_SEARCH_API_KEY) {
+    return Response.json({ error: "La recherche web n'est pas configurée (BRAVE_SEARCH_API_KEY manquante)." }, { status: 503 });
+  }
+
+  try {
+    const results = await searchWeb(query);
+    return Response.json({ query, results });
+  } catch {
+    return Response.json({ error: "La recherche web a échoué." }, { status: 502 });
+  }
+}

@@ -47,6 +47,19 @@ curl -X DELETE https://data.example.com/api/datasets/mon-dataset \
 
 Sans `DATAFINDER_API_KEY` configurée côté serveur, ces routes répondent `503`. Une clé absente ou invalide répond `401`.
 
+## Recherche web
+
+En plus du catalogue DataFinder, la barre de recherche interroge aussi le web via l'API [Brave Search](https://brave.com/search/api/). Cette fonctionnalité est optionnelle : sans clé configurée, seuls les résultats du catalogue s'affichent.
+
+1. Créer un compte sur [brave.com/search/api](https://brave.com/search/api/) (offre gratuite : 2 000 requêtes/mois).
+2. Ajouter la clé obtenue dans `.env` :
+
+```
+BRAVE_SEARCH_API_KEY=votre_cle
+```
+
+La route `GET /api/web-search?q=...` est publique (lecture seule, comme `GET /api/datasets`) et ne nécessite pas `DATAFINDER_API_KEY`. Sans `BRAVE_SEARCH_API_KEY`, elle répond `503`.
+
 ## Base de données
 
 Les datasets sont persistés dans une base SQLite via le module natif `node:sqlite` (aucune dépendance externe). Par défaut, le fichier est créé dans `data/datafinder.db` (chemin relatif au répertoire de travail), configurable via la variable d'environnement `DATAFINDER_DB_PATH`.

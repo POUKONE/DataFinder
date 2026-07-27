@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { Dataset, DatasetInput, PaginatedDatasets } from "@/lib/datasets";
 import { MAX_PAGE_SIZE } from "@/lib/pagination";
+import type { WebResult } from "@/lib/webSearch";
 
 const popular = ["Immobilier en France", "Chômage des jeunes", "Météo historique", "Fraude bancaire"];
 const RESULTS_PER_PAGE = 6;
@@ -68,6 +69,11 @@ export default function Home() {
   const [formState, setFormState] = useState<DatasetFormState>(emptyForm);
   const [formError, setFormError] = useState<string | null>(null);
   const [formSubmitting, setFormSubmitting] = useState(false);
+
+  const [webQuery, setWebQuery] = useState("");
+  const [webResults, setWebResults] = useState<WebResult[]>([]);
+  const [webSearching, setWebSearching] = useState(false);
+  const [webError, setWebError] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("datafinder-favorites");
@@ -199,15 +205,44 @@ export default function Home() {
 
   useEffect(() => { window.setTimeout(() => setPage(1), 0); }, [query, format, source, license, favoritesOnly]);
 
+  async function runWebSearch(rawQuery: string) {
+    const trimmed = rawQuery.trim();
+    setWebQuery(trimmed);
+    if (!trimmed) {
+      setWebResults([]);
+      setWebError(null);
+      return;
+    }
+    setWebSearching(true);
+    setWebError(null);
+    try {
+      const response = await fetch(`/api/web-search?q=${encodeURIComponent(trimmed)}`);
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        setWebResults([]);
+        setWebError(payload?.error || "La recherche web a échoué.");
+        return;
+      }
+      setWebResults(payload.results ?? []);
+    } catch {
+      setWebResults([]);
+      setWebError("Impossible de contacter le serveur.");
+    } finally {
+      setWebSearching(false);
+    }
+  }
+
   function runSearch(event?: FormEvent) {
     event?.preventDefault();
     setSearched(true);
+    runWebSearch(query);
     window.setTimeout(() => document.getElementById("results")?.scrollIntoView({ behavior: "smooth", block: "start" }), 30);
   }
 
   function choosePopular(value: string) {
     setQuery(value);
     setSearched(true);
+    runWebSearch(value);
     window.setTimeout(() => document.getElementById("results")?.scrollIntoView({ behavior: "smooth" }), 30);
   }
 
@@ -335,6 +370,30 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {searched && webQuery && (
+        <section className="web-results" id="web-results">
+          <div className="section-heading">
+            <div><span className="section-kicker">RECHERCHE WEB</span><h2>Résultats pour « {webQuery} »</h2></div>
+          </div>
+
+          {webSearching && <div className="empty"><span>⌕</span><h3>Recherche sur le web…</h3></div>}
+          {!webSearching && webError && <div className="empty"><span>⌕</span><h3>Recherche web indisponible</h3><p>{webError}</p></div>}
+          {!webSearching && !webError && webResults.length === 0 && <div className="empty"><span>⌕</span><h3>Aucun résultat web trouvé.</h3></div>}
+
+          {!webSearching && !webError && webResults.length > 0 && (
+            <div className="web-results-list">
+              {webResults.map((result) => (
+                <a className="web-result" key={result.url} href={result.url} target="_blank" rel="noreferrer">
+                  <span className="web-result-url">{result.url}</span>
+                  <h3>{result.title}</h3>
+                  <p>{result.description}</p>
+                </a>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="how" id="how">
         <div className="how-copy"><span className="section-kicker">COMMENT ÇA MARCHE</span><h2>De la question au bon dataset, en trois contrôles.</h2><p>Chaque résultat est analysé pour réduire le temps passé à vérifier les métadonnées et les conditions d’utilisation.</p></div>
