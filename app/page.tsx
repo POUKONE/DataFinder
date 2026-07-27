@@ -58,9 +58,6 @@ export default function Home() {
   const [format, setFormat] = useState("Tous les formats");
   const [source, setSource] = useState("Toutes les sources");
   const [license, setLicense] = useState("Toutes les licences");
-  const [favorites, setFavorites] = useState<string[]>([]);
-  const [favoritesLoaded, setFavoritesLoaded] = useState(false);
-  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [compare, setCompare] = useState<string[]>([]);
   const [showCompare, setShowCompare] = useState(false);
   const [selected, setSelected] = useState<Dataset | null>(null);
@@ -81,20 +78,6 @@ export default function Home() {
   const [webResults, setWebResults] = useState<WebResult[]>([]);
   const [webSearching, setWebSearching] = useState(false);
   const [webError, setWebError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem("datafinder-favorites");
-    window.setTimeout(() => {
-      if (saved) {
-        try { setFavorites(JSON.parse(saved)); } catch { window.localStorage.removeItem("datafinder-favorites"); }
-      }
-      setFavoritesLoaded(true);
-    }, 0);
-  }, []);
-
-  useEffect(() => {
-    if (favoritesLoaded) window.localStorage.setItem("datafinder-favorites", JSON.stringify(favorites));
-  }, [favorites, favoritesLoaded]);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("datafinder-api-key");
@@ -201,16 +184,15 @@ export default function Home() {
       return (words.length === 0 || words.every((word) => searchable.includes(word))) &&
         (format === "Tous les formats" || dataset.formats.includes(format)) &&
         (source === "Toutes les sources" || dataset.sourceType === source) &&
-        (license === "Toutes les licences" || dataset.license.includes(license)) &&
-        (!favoritesOnly || favorites.includes(dataset.id));
+        (license === "Toutes les licences" || dataset.license.includes(license));
     }).sort((a, b) => b.score - a.score);
-  }, [datasets, query, format, source, license, favoritesOnly, favorites]);
+  }, [datasets, query, format, source, license]);
 
   const totalPages = Math.max(1, Math.ceil(results.length / RESULTS_PER_PAGE));
   const currentPage = Math.min(page, totalPages);
   const pagedResults = results.slice((currentPage - 1) * RESULTS_PER_PAGE, currentPage * RESULTS_PER_PAGE);
 
-  useEffect(() => { window.setTimeout(() => setPage(1), 0); }, [query, format, source, license, favoritesOnly]);
+  useEffect(() => { window.setTimeout(() => setPage(1), 0); }, [query, format, source, license]);
 
   async function runWebSearch(rawQuery: string) {
     const trimmed = rawQuery.trim();
@@ -253,10 +235,6 @@ export default function Home() {
     window.setTimeout(() => document.getElementById("results")?.scrollIntoView({ behavior: "smooth" }), 30);
   }
 
-  function toggleFavorite(id: string) {
-    setFavorites((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
-  }
-
   function toggleCompare(id: string) {
     setCompare((current) => current.includes(id) ? current.filter((item) => item !== id) : current.length < 3 ? [...current, id] : current);
   }
@@ -272,7 +250,6 @@ export default function Home() {
         </a>
         <nav aria-label="Navigation principale">
           <a href="#discover">Explorer</a>
-          <button className={favoritesOnly ? "nav-active" : ""} onClick={() => { setFavoritesOnly(!favoritesOnly); setSearched(true); }}>Favoris <b>{favorites.length}</b></button>
           <a href="#how">Comment ça marche</a>
         </nav>
         <button
@@ -333,7 +310,7 @@ export default function Home() {
           <div><span className="section-kicker">SÉLECTION DATAFINDER</span><h2>{searched ? `${results.length} résultats pertinents` : "Des données prêtes à servir"}</h2></div>
           <div className="heading-actions">
             {isAdmin && <button className="add-dataset" onClick={openCreateForm}>+ Ajouter un dataset</button>}
-            {searched && <button className="reset" onClick={() => { setQuery(""); setFormat("Tous les formats"); setSource("Toutes les sources"); setLicense("Toutes les licences"); setFavoritesOnly(false); }}>Réinitialiser les filtres</button>}
+            {searched && <button className="reset" onClick={() => { setQuery(""); setFormat("Tous les formats"); setSource("Toutes les sources"); setLicense("Toutes les licences"); }}>Réinitialiser les filtres</button>}
           </div>
         </div>
 
@@ -360,7 +337,6 @@ export default function Home() {
               <div className="card-actions">
                 <button className="view" onClick={() => setSelected(dataset)}>Voir la fiche <span>→</span></button>
                 <button className={compare.includes(dataset.id) ? "icon-button active" : "icon-button"} onClick={() => toggleCompare(dataset.id)} aria-label={`Comparer ${dataset.title}`} title="Comparer">⇄</button>
-                <button className={favorites.includes(dataset.id) ? "icon-button active heart" : "icon-button heart"} onClick={() => toggleFavorite(dataset.id)} aria-label={`Ajouter ${dataset.title} aux favoris`} title="Favori">{favorites.includes(dataset.id) ? "♥" : "♡"}</button>
                 {isAdmin && <button className="icon-button" onClick={() => openEditForm(dataset)} aria-label={`Éditer ${dataset.title}`} title="Éditer">✎</button>}
                 {isAdmin && <button className="icon-button danger" onClick={() => handleDelete(dataset)} aria-label={`Supprimer ${dataset.title}`} title="Supprimer">✕</button>}
               </div>
@@ -422,7 +398,7 @@ export default function Home() {
         <div className="detail-grid"><div><span>Couverture</span><strong>{selected.country}</strong><small>{selected.period}</small></div><div><span>Formats</span><strong>{selected.formats.join(", ")}</strong><small>{selected.size}</small></div><div><span>Mise à jour</span><strong>{selected.update}</strong><small>{selected.access}</small></div><div><span>Licence</span><strong>{selected.license}</strong><small>Vérifier les conditions</small></div></div>
         <div className="variables"><h3>Variables principales</h3><div>{selected.variables.map((variable) => <span key={variable}>{variable}</span>)}</div></div>
         <div className="detail-note"><b>i</b><p><strong>Pourquoi ce résultat ?</strong> Source identifiable, accès documenté et format exploitable. Le score combine pertinence, fiabilité, fraîcheur, licence et facilité d’usage.</p></div>
-        <div className="modal-actions"><button onClick={() => toggleFavorite(selected.id)}>{favorites.includes(selected.id) ? "♥ Retirer des favoris" : "♡ Ajouter aux favoris"}</button><a href={selected.url} target="_blank" rel="noreferrer">Accéder à la source officielle ↗</a></div>
+        <div className="modal-actions"><a href={selected.url} target="_blank" rel="noreferrer">Accéder à la source officielle ↗</a></div>
       </section></div>}
 
       {showCompare && <div className="modal-backdrop" onMouseDown={() => setShowCompare(false)}><section className="compare-modal" onMouseDown={(event) => event.stopPropagation()} aria-modal="true" role="dialog" aria-labelledby="compare-title"><button className="modal-close" onClick={() => setShowCompare(false)} aria-label="Fermer">×</button><span className="section-kicker">COMPARATEUR</span><h2 id="compare-title">Comparez avant de choisir</h2><div className="comparison-table"><div className="comparison-labels"><span>Dataset</span><span>Score</span><span>Formats</span><span>Licence</span><span>Couverture</span><span>Accès</span></div>{comparison.map((item) => <div className="comparison-column" key={item.id}><strong>{item.title}</strong><span className="compare-score">{item.score}/100</span><span>{item.formats.join(", ")}</span><span>{item.license}</span><span>{item.country}<small>{item.period}</small></span><span>{item.access}</span><a href={item.url} target="_blank" rel="noreferrer">Ouvrir ↗</a></div>)}</div></section></div>}
