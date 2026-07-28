@@ -8,6 +8,30 @@ const popular = ["Immobilier en France", "Chômage des jeunes", "Météo histori
 const RESULTS_PER_PAGE = 6;
 const EMPTY_STATS: CatalogStats = { datasets: 0, providers: 0, domains: 0, licenses: 0 };
 
+type PaginationItem = number | { ellipsisBefore: number };
+
+// Construit "1 2 … 829 830 831 … 1671 1672" : les 2 premières pages, les 2
+// dernières, et la page courante ± 1, avec un "…" pour chaque trou — sauf un
+// trou d'une seule page, qu'on affiche directement plutôt que de l'élider.
+function getPaginationItems(current: number, total: number): PaginationItem[] {
+  const boundaryCount = 2;
+  const siblingCount = 1;
+  const pages = new Set<number>();
+  for (let i = 1; i <= Math.min(boundaryCount, total); i += 1) pages.add(i);
+  for (let i = Math.max(1, total - boundaryCount + 1); i <= total; i += 1) pages.add(i);
+  for (let i = Math.max(1, current - siblingCount); i <= Math.min(total, current + siblingCount); i += 1) pages.add(i);
+
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+  const items: PaginationItem[] = [];
+  sorted.forEach((pageNumber, index) => {
+    const previous = sorted[index - 1];
+    if (previous !== undefined && pageNumber - previous === 2) items.push(previous + 1);
+    else if (previous !== undefined && pageNumber - previous > 2) items.push({ ellipsisBefore: pageNumber });
+    items.push(pageNumber);
+  });
+  return items;
+}
+
 type DatasetFormState = {
   title: string; provider: string; sourceType: string; description: string; domain: string;
   country: string; period: string; formats: string; license: string; update: string;
@@ -369,11 +393,26 @@ export default function Home() {
         </div>}
         {!datasetsLoading && !datasetsError && total === 0 && <div className="empty"><span>⌕</span><h3>Aucun dataset ne correspond exactement.</h3><p>Essayez un domaine plus large ou réinitialisez les filtres.</p></div>}
         {!datasetsLoading && !datasetsError && total > 0 && totalPages > 1 && (
-          <div className="pagination">
+          <nav className="pagination" aria-label="Pagination des résultats">
             <button onClick={() => setPage(page - 1)} disabled={page === 1}>← Précédent</button>
-            <span>Page {page} / {totalPages}</span>
+            <div className="pagination-pages">
+              {getPaginationItems(page, totalPages).map((item) =>
+                typeof item === "number" ? (
+                  <button
+                    key={item}
+                    className={item === page ? "active" : undefined}
+                    aria-current={item === page ? "page" : undefined}
+                    onClick={() => setPage(item)}
+                  >
+                    {item}
+                  </button>
+                ) : (
+                  <span key={`ellipsis-${item.ellipsisBefore}`} className="pagination-ellipsis" aria-hidden="true">…</span>
+                ),
+              )}
+            </div>
             <button onClick={() => setPage(page + 1)} disabled={page === totalPages}>Suivant →</button>
-          </div>
+          </nav>
         )}
       </section>
 
