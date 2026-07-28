@@ -3,7 +3,7 @@ import { createDataset, DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, searchDatasets, valida
 
 export const dynamic = "force-dynamic";
 
-export function GET(request: Request) {
+export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const pageParam = searchParams.get("page");
   const pageSizeParam = searchParams.get("pageSize");
@@ -25,7 +25,7 @@ export function GET(request: Request) {
     license: searchParams.get("license") ?? undefined,
   };
 
-  return Response.json(searchDatasets(params, page, Math.min(pageSize, MAX_PAGE_SIZE)));
+  return Response.json(await searchDatasets(params, page, Math.min(pageSize, MAX_PAGE_SIZE)));
 }
 
 export async function POST(request: Request) {
@@ -44,6 +44,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "Validation échouée.", details: errors }, { status: 400 });
   }
 
-  const dataset = createDataset(body as DatasetInput & { id?: string });
+  const dataset = await createDataset(body as DatasetInput & { id?: string });
   return Response.json(dataset, { status: 201 });
 }

@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { before, beforeEach, describe, test } from "node:test";
 
-process.env.DATAFINDER_DB_PATH = ":memory:";
-
 const { createDataset, deleteDataset, DEFAULT_PAGE_SIZE, listDatasets, MAX_PAGE_SIZE } = await import("../lib/datasets");
 type DatasetInput = import("../lib/datasets").DatasetInput;
 
@@ -29,25 +27,27 @@ function makeInput(overrides: Partial<DatasetInput> = {}): DatasetInput {
   };
 }
 
-function resetDatasets() {
-  for (const dataset of listDatasets(1, MAX_PAGE_SIZE).data) {
-    deleteDataset(dataset.id);
+async function resetDatasets() {
+  while (true) {
+    const { data } = await listDatasets(1, MAX_PAGE_SIZE);
+    if (data.length === 0) break;
+    for (const dataset of data) await deleteDataset(dataset.id);
   }
 }
 
 // Ids/scores choisis pour un tri par score descendant prévisible : p1 (90) > p2 (70) > p3 (50).
-function seedThree() {
-  resetDatasets();
-  createDataset({ ...makeInput({ score: 50 }), id: "p3" });
-  createDataset({ ...makeInput({ score: 90 }), id: "p1" });
-  createDataset({ ...makeInput({ score: 70 }), id: "p2" });
+async function seedThree() {
+  await resetDatasets();
+  await createDataset({ ...makeInput({ score: 50 }), id: "p3" });
+  await createDataset({ ...makeInput({ score: 90 }), id: "p1" });
+  await createDataset({ ...makeInput({ score: 70 }), id: "p2" });
 }
 
 describe("listDatasets - valeurs par défaut", () => {
   beforeEach(seedThree);
 
-  test("utilise page=1 et pageSize=DEFAULT_PAGE_SIZE par défaut", () => {
-    const result = listDatasets();
+  test("utilise page=1 et pageSize=DEFAULT_PAGE_SIZE par défaut", async () => {
+    const result = await listDatasets();
     assert.equal(result.page, 1);
     assert.equal(result.pageSize, DEFAULT_PAGE_SIZE);
     assert.equal(result.total, 3);
@@ -55,8 +55,8 @@ describe("listDatasets - valeurs par défaut", () => {
     assert.equal(result.data.length, 3);
   });
 
-  test("trie les résultats par score décroissant", () => {
-    const { data } = listDatasets(1, MAX_PAGE_SIZE);
+  test("trie les résultats par score décroissant", async () => {
+    const { data } = await listDatasets(1, MAX_PAGE_SIZE);
     assert.deepEqual(data.map((d) => d.id), ["p1", "p2", "p3"]);
   });
 });
@@ -64,21 +64,21 @@ describe("listDatasets - valeurs par défaut", () => {
 describe("listDatasets - découpage en pages", () => {
   beforeEach(seedThree);
 
-  test("renvoie la bonne tranche pour page=1 pageSize=2", () => {
-    const result = listDatasets(1, 2);
+  test("renvoie la bonne tranche pour page=1 pageSize=2", async () => {
+    const result = await listDatasets(1, 2);
     assert.deepEqual(result.data.map((d) => d.id), ["p1", "p2"]);
     assert.equal(result.total, 3);
     assert.equal(result.totalPages, 2);
   });
 
-  test("renvoie la bonne tranche pour page=2 pageSize=2", () => {
-    const result = listDatasets(2, 2);
+  test("renvoie la bonne tranche pour page=2 pageSize=2", async () => {
+    const result = await listDatasets(2, 2);
     assert.deepEqual(result.data.map((d) => d.id), ["p3"]);
     assert.equal(result.totalPages, 2);
   });
 
-  test("renvoie un tableau vide pour une page au-delà des résultats", () => {
-    const result = listDatasets(99, 2);
+  test("renvoie un tableau vide pour une page au-delà des résultats", async () => {
+    const result = await listDatasets(99, 2);
     assert.deepEqual(result.data, []);
     assert.equal(result.total, 3);
     assert.equal(result.totalPages, 2);
@@ -89,8 +89,8 @@ describe("listDatasets - découpage en pages", () => {
 describe("listDatasets - catalogue vide", () => {
   before(resetDatasets);
 
-  test("totalPages vaut au moins 1 même sans données", () => {
-    const result = listDatasets(1, 10);
+  test("totalPages vaut au moins 1 même sans données", async () => {
+    const result = await listDatasets(1, 10);
     assert.equal(result.total, 0);
     assert.equal(result.totalPages, 1);
     assert.deepEqual(result.data, []);

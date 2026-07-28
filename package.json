@@ -10,10 +10,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "node .next/standalone/server.js",
-    "test": "npm run build && node --import tsx --test",
+    "test": "npm run build && node --env-file=.env.test --import tsx --test --test-concurrency=1",
     "lint": "eslint . --ignore-pattern .next"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.9",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6"

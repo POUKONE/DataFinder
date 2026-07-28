@@ -122,7 +122,7 @@ function mapDataset(raw: HfDataset): Dataset {
 async function main() {
   console.log(`Import de jusqu'à ${TARGET_COUNT} datasets depuis HuggingFace...`);
 
-  const existingUrls = new Set(listDatasets(1, 1_000_000).data.map((d) => d.url));
+  const existingUrls = new Set((await listDatasets(1, 1_000_000)).data.map((d) => d.url));
 
   let imported = 0;
   let skippedExisting = 0;
@@ -148,12 +148,12 @@ async function main() {
       }
 
       const dataset = mapDataset(raw);
-      if (dbDatasetExists(dataset.id)) {
+      if (await dbDatasetExists(dataset.id)) {
         skippedExisting += 1;
         continue;
       }
 
-      dbInsertDataset(dataset);
+      await dbInsertDataset(dataset);
       existingUrls.add(url);
       imported += 1;
     }

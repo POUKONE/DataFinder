@@ -1,14 +1,15 @@
 services:
   datafinder:
-    build: .
+    build:
+      context: .
+      args:
+        SUPABASE_URL: ${SUPABASE_URL:?Définissez SUPABASE_URL dans un fichier .env avant de lancer docker compose}
+        SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:?Définissez SUPABASE_SECRET_KEY dans un fichier .env avant de lancer docker compose}
     restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       DATAFINDER_PUBLIC_URL: "http://localhost:3000"
       DATAFINDER_API_KEY: ${DATAFINDER_API_KEY:?Définissez DATAFINDER_API_KEY dans un fichier .env avant de lancer docker compose}
-    volumes:
-      - datafinder-data:/app/data
-
-volumes:
-  datafinder-data:
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY}

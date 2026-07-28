@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, test } from "node:test";
 
-process.env.DATAFINDER_DB_PATH = ":memory:";
 process.env.DATAFINDER_API_KEY = "test-admin-key";
 
 const { GET: listGET, POST: listPOST } = await import("../app/api/datasets/route");
@@ -9,8 +8,12 @@ const { GET: itemGET, PUT: itemPUT, DELETE: itemDELETE } = await import("../app/
 const { listDatasets, deleteDataset, MAX_PAGE_SIZE } = await import("../lib/datasets");
 type DatasetInput = import("../lib/datasets").DatasetInput;
 
-function resetDatasets() {
-  for (const dataset of listDatasets(1, MAX_PAGE_SIZE).data) deleteDataset(dataset.id);
+async function resetDatasets() {
+  while (true) {
+    const { data } = await listDatasets(1, MAX_PAGE_SIZE);
+    if (data.length === 0) break;
+    for (const dataset of data) await deleteDataset(dataset.id);
+  }
 }
 
 function makeInput(overrides: Partial<DatasetInput> = {}): DatasetInput {
@@ -31,12 +34,12 @@ describe("GET /api/datasets", () => {
   beforeEach(resetDatasets);
 
   test("retourne 400 pour un paramètre page invalide", async () => {
-    const response = listGET(new Request("http://localhost/api/datasets?page=0"));
+    const response = await listGET(new Request("http://localhost/api/datasets?page=0"));
     assert.equal(response.status, 400);
   });
 
   test("retourne la liste paginée par défaut", async () => {
-    const response = listGET(new Request("http://localhost/api/datasets"));
+    const response = await listGET(new Request("http://localhost/api/datasets"));
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.total, 0);
@@ -54,7 +57,7 @@ describe("GET /api/datasets", () => {
       body: JSON.stringify(makeInput({ title: "Météo historique" })),
     }));
 
-    const response = listGET(new Request("http://localhost/api/datasets?q=chomage"));
+    const response = await listGET(new Request("http://localhost/api/datasets?q=chomage"));
     const body = await response.json();
     assert.equal(body.total, 1);
     assert.equal(body.data[0].title, "Chômage des jeunes");

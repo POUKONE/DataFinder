@@ -2,6 +2,6 @@ import { getCatalogStats } from "@/lib/datasets";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  return Response.json(getCatalogStats());
+export async function GET() {
+  return Response.json(await getCatalogStats());
 }

@@ -52,10 +52,10 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "") || "dataset";
 }
 
-function uniqueId(base: string, exists: (id: string) => boolean): string {
+async function uniqueId(base: string, exists: (id: string) => Promise<boolean>): Promise<string> {
   let candidate = base;
   let suffix = 2;
-  while (exists(candidate)) {
+  while (await exists(candidate)) {
     candidate = `${base}-${suffix}`;
     suffix += 1;
   }
@@ -72,10 +72,11 @@ function normalizeSearchText(value: string): string {
 // Filtre + trie côté serveur sur l'ensemble du catalogue avant de paginer,
 // pour que la recherche porte réellement sur tous les datasets (pas
 // seulement sur le premier lot chargé par le client).
-export function searchDatasets(params: DatasetSearchParams = {}, page = 1, pageSize = DEFAULT_PAGE_SIZE): PaginatedDatasets {
+export async function searchDatasets(params: DatasetSearchParams = {}, page = 1, pageSize = DEFAULT_PAGE_SIZE): Promise<PaginatedDatasets> {
   const words = normalizeSearchText((params.query ?? "").trim()).split(/\s+/).filter(Boolean);
 
-  const filtered = dbListAllDatasets().filter((dataset) => {
+  const all = await dbListAllDatasets();
+  const filtered = all.filter((dataset) => {
     const searchable = normalizeSearchText([dataset.title, dataset.provider, dataset.description, dataset.domain, dataset.country, ...dataset.variables].join(" "));
     return (words.length === 0 || words.every((word) => searchable.includes(word))) &&
       (!params.format || dataset.formats.includes(params.format)) &&
@@ -89,32 +90,32 @@ export function searchDatasets(params: DatasetSearchParams = {}, page = 1, pageS
   return { data, page, pageSize, total, totalPages };
 }
 
-export function listDatasets(page = 1, pageSize = DEFAULT_PAGE_SIZE): PaginatedDatasets {
+export function listDatasets(page = 1, pageSize = DEFAULT_PAGE_SIZE): Promise<PaginatedDatasets> {
   return searchDatasets({}, page, pageSize);
 }
 
-export function getCatalogStats(): CatalogStats {
+export function getCatalogStats(): Promise<CatalogStats> {
   return dbCatalogStats();
 }
 
-export function getDataset(id: string): Dataset | undefined {
+export function getDataset(id: string): Promise<Dataset | undefined> {
   return dbGetDataset(id);
 }
 
-export function createDataset(input: DatasetInput & { id?: string }): Dataset {
+export async function createDataset(input: DatasetInput & { id?: string }): Promise<Dataset> {
   const base = input.id ? slugify(input.id) : slugify(input.title);
-  const id = uniqueId(base, dbDatasetExists);
+  const id = await uniqueId(base, dbDatasetExists);
   const dataset: Dataset = { ...input, id };
-  dbInsertDataset(dataset);
+  await dbInsertDataset(dataset);
   return dataset;
 }
 
-export function updateDataset(id: string, input: DatasetInput): Dataset | undefined {
+export async function updateDataset(id: string, input: DatasetInput): Promise<Dataset | undefined> {
   const dataset: Dataset = { ...input, id };
-  return dbUpdateDataset(dataset) ? dataset : undefined;
+  return (await dbUpdateDataset(dataset)) ? dataset : undefined;
 }
 
-export function deleteDataset(id: string): boolean {
+export function deleteDataset(id: string): Promise<boolean> {
   return dbDeleteDataset(id);
 }
 

@@ -40,6 +40,16 @@ docker compose up -d --build
 
 The application listens on port `3000`. Update `DATAFINDER_PUBLIC_URL` in `compose.yaml` to match your public domain.
 
+## Hosting on Vercel
+
+Since data is now persisted on Supabase rather than local disk, the app can be deployed as-is on Vercel:
+
+1. Import the GitHub repository into Vercel
+2. Set these environment variables in the Vercel project: `DATAFINDER_PUBLIC_URL`, `DATAFINDER_API_KEY`, `SUPABASE_URL`, `SUPABASE_SECRET_KEY` (and `BRAVE_SEARCH_API_KEY` if web search is used)
+3. Deploy — Vercel auto-detects Next.js, no extra configuration is needed
+
+`GET /api/web-search` rate limiting remains in-memory per instance: on Vercel, several serverless instances can run in parallel, so this limit is no longer strictly enforced at a global scale.
+
 ## API authentication
 
 Read endpoints (`GET /api/datasets`, `GET /api/datasets/:id`) stay public. Write endpoints (`POST /api/datasets`, `PUT /api/datasets/:id`, `DELETE /api/datasets/:id`) require an API key set via the `DATAFINDER_API_KEY` environment variable, sent in the `Authorization` header:
@@ -68,9 +78,18 @@ Since this route triggers a paid call to the Brave API, it's protected by an in-
 
 ## Database
 
-Datasets are persisted in a SQLite database via Node's native `node:sqlite` module (no external dependency). By default, the file is created at `data/datafinder.db` (relative to the working directory), configurable via the `DATAFINDER_DB_PATH` environment variable.
+Datasets are persisted in [Supabase](https://supabase.com) (managed Postgres), via the `@supabase/supabase-js` client. Two variables are required:
 
-With Docker, this path (`/app/data`) is mounted on a named volume (`datafinder-data` in `compose.yaml`) so data survives container restarts and rebuilds.
+```
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SECRET_KEY=your_service_role_key
+```
+
+Use the **service_role** key (`Project Settings > Database > Connect > Server`), never the public/anon key: it grants full access to the database and must only ever be known to the server. This backing store keeps the catalog durable enough to deploy on serverless platforms with an ephemeral filesystem (Vercel, etc.), in addition to classic Docker/VPS hosting.
+
+The schema (`datasets` table, `meta` table for first-run seeding, `get_catalog_stats` function) must be created once in your Supabase project's SQL editor — see the comments at the top of `lib/db.ts` for the exact statements.
+
+With Docker, `SUPABASE_URL` and `SUPABASE_SECRET_KEY` must be provided both as build arguments (`compose.yaml` passes them automatically) and as runtime environment variables, since `next build` already queries the database while generating pages.
 
 ## Nginx reverse proxy
 
@@ -98,11 +117,21 @@ npm test
 npm run lint
 ```
 
-`npm test` runs the build then the `node:test` suite (via `tsx`): the rendering smoke test plus unit tests for the CRUD, pagination, authentication, rate limiting, and web search logic, run against an in-memory SQLite database (`DATAFINDER_DB_PATH=:memory:`) and a mocked `fetch` (no real network calls, no Brave quota usage).
+`npm test` runs the build then the `node:test` suite (via `tsx`, with `--test-concurrency=1`): the rendering smoke test plus unit tests for the CRUD, pagination, authentication, rate limiting, and web search logic. Dataset-related tests wipe the whole table on every test (`resetDatasets`): they must **never run against the `public` schema** (the production one), or the entire catalog would be lost.
 
-These checks also run automatically on GitHub Actions on every push and pull request (see `.github/workflows/ci.yml`).
+For this reason, tests target a separate Postgres schema, `test`, in the same Supabase project (avoids using up a second free project). Create it once via the Supabase SQL editor — see the comments at the top of `lib/db.ts` for the exact schema (`datasets`/`meta` tables + `get_catalog_stats` function, prefixed with `test.`), and remember to add `test` to "Exposed schemas" under `Project Settings > Data API`. Then create a `.env.test` file (not committed):
 
-The `/api/health` route verifies the SQLite database actually responds (`SELECT 1`) and returns `200` (`status: "ok"`) or `503` (`status: "error"`) accordingly; it can be used by Docker, your orchestrator, or your hosting provider.
+```
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_SECRET_KEY=your_service_role_key
+SUPABASE_SCHEMA=test
+```
+
+`npm test` loads `.env.test` (not `.env`) for the test phase — only the initial build phase still touches the `public` schema, harmlessly (connectivity check + idempotent seeding). Test execution is forced sequential (`--test-concurrency=1`) so no test file tramples another's data while wiping the table.
+
+These checks also run automatically on GitHub Actions on every push and pull request (see `.github/workflows/ci.yml`): make sure to set `SUPABASE_URL` and `SUPABASE_SECRET_KEY` (the production ones — the workflow forces `SUPABASE_SCHEMA=test`) in the repository's GitHub secrets.
+
+The `/api/health` route verifies the Supabase database actually responds and returns `200` (`status: "ok"`) or `503` (`status: "error"`) accordingly; it can be used by Docker, your orchestrator, or your hosting provider.
 
 ## License
 

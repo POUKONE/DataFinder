@@ -7,7 +7,7 @@ type RouteContext = { params: Promise<{ id: string }> };
 
 export async function GET(_request: Request, { params }: RouteContext) {
   const { id } = await params;
-  const dataset = getDataset(id);
+  const dataset = await getDataset(id);
   if (!dataset) return Response.json({ error: "Dataset introuvable." }, { status: 404 });
   return Response.json(dataset);
 }
@@ -30,7 +30,7 @@ export async function PUT(request: Request, { params }: RouteContext) {
     return Response.json({ error: "Validation échouée.", details: errors }, { status: 400 });
   }
 
-  const updated = updateDataset(id, body as DatasetInput);
+  const updated = await updateDataset(id, body as DatasetInput);
   if (!updated) return Response.json({ error: "Dataset introuvable." }, { status: 404 });
   return Response.json(updated);
 }
@@ -40,7 +40,7 @@ export async function DELETE(request: Request, { params }: RouteContext) {
   if (unauthorized) return unauthorized;
 
   const { id } = await params;
-  const deleted = deleteDataset(id);
+  const deleted = await deleteDataset(id);
   if (!deleted) return Response.json({ error: "Dataset introuvable." }, { status: 404 });
   return new Response(null, { status: 204 });
 }

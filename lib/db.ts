@@ -1,6 +1,4 @@
-import { DatabaseSync, type StatementResultingChanges } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createClient } from "@supabase/supabase-js";
 import type { Dataset } from "./datasets";
 import { seedDatasets } from "./seed";
 
@@ -8,14 +6,14 @@ type DatasetRow = {
   id: string;
   title: string;
   provider: string;
-  sourceType: string;
+  source_type: string;
   description: string;
   domain: string;
   country: string;
   period: string;
   formats: string;
   license: string;
-  updateFrequency: string;
+  update_frequency: string;
   score: number;
   size: string;
   access: string;
@@ -25,84 +23,39 @@ type DatasetRow = {
   accent: string;
 };
 
-const dbPath = process.env.DATAFINDER_DB_PATH || join(process.cwd(), "data", "datafinder.db");
-mkdirSync(dirname(dbPath), { recursive: true });
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseSecretKey = process.env.SUPABASE_SECRET_KEY;
 
-function isSqliteBusyError(error: unknown): boolean {
-  return typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "ERR_SQLITE_ERROR";
+if (!supabaseUrl || !supabaseSecretKey) {
+  throw new Error("SUPABASE_URL et SUPABASE_SECRET_KEY doivent être définies (clé service_role, jamais la clé publique).");
 }
 
-function sleepSync(ms: number): void {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
-}
-
-// Next's build spins up several workers that each open this same (possibly
-// brand-new) database file at once. busy_timeout alone hasn't been enough to
-// stop the occasional "database is locked" during that startup race, so
-// retry the whole init sequence (and, below, the seed claim) with jittered
-// backoff on SQLITE_BUSY specifically.
-function withSqliteBusyRetry<T>(fn: () => T, maxAttempts = 8): T {
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-    try {
-      return fn();
-    } catch (error) {
-      if (!isSqliteBusyError(error) || attempt === maxAttempts) throw error;
-      sleepSync(20 * attempt + Math.floor(Math.random() * 30));
-    }
-  }
-  throw new Error("unreachable");
-}
-
-const db = withSqliteBusyRetry(() => {
-  const instance = new DatabaseSync(dbPath);
-  // busy_timeout must be set before any statement that can contend for a lock
-  // (including the journal_mode switch itself), otherwise concurrent
-  // processes racing to create/upgrade a brand-new database file fail
-  // immediately with "database is locked" instead of waiting their turn.
-  instance.exec("PRAGMA busy_timeout = 5000");
-  instance.exec("PRAGMA journal_mode = WAL");
-
-  instance.exec(`
-    CREATE TABLE IF NOT EXISTS datasets (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      sourceType TEXT NOT NULL,
-      description TEXT NOT NULL,
-      domain TEXT NOT NULL,
-      country TEXT NOT NULL,
-      period TEXT NOT NULL,
-      formats TEXT NOT NULL,
-      license TEXT NOT NULL,
-      updateFrequency TEXT NOT NULL,
-      score REAL NOT NULL,
-      size TEXT NOT NULL,
-      access TEXT NOT NULL,
-      variables TEXT NOT NULL,
-      url TEXT NOT NULL,
-      tags TEXT NOT NULL,
-      accent TEXT NOT NULL
-    )
-  `);
-
-  instance.exec(`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
-
-  return instance;
+// SUPABASE_SCHEMA permet d'isoler la suite de tests (schéma "test") du
+// catalogue de production (schéma "public" par défaut) au sein du même
+// projet Supabase, sans consommer un second projet gratuit.
+const supabase = createClient(supabaseUrl, supabaseSecretKey, {
+  auth: { persistSession: false },
+  db: { schema: process.env.SUPABASE_SCHEMA || "public" },
 });
+
+// L'API REST de Supabase plafonne le nombre de lignes renvoyées par requête
+// (1000 par défaut) : on doit paginer nous-même pour récupérer tout le
+// catalogue d'un coup.
+const FETCH_ALL_BATCH_SIZE = 1000;
 
 function rowToDataset(row: DatasetRow): Dataset {
   return {
     id: row.id,
     title: row.title,
     provider: row.provider,
-    sourceType: row.sourceType,
+    sourceType: row.source_type,
     description: row.description,
     domain: row.domain,
     country: row.country,
     period: row.period,
     formats: JSON.parse(row.formats),
     license: row.license,
-    update: row.updateFrequency,
+    update: row.update_frequency,
     score: row.score,
     size: row.size,
     access: row.access,
@@ -113,132 +66,128 @@ function rowToDataset(row: DatasetRow): Dataset {
   };
 }
 
-const insertStatement = db.prepare(`
-  INSERT INTO datasets (id, title, provider, sourceType, description, domain, country, period, formats, license, updateFrequency, score, size, access, variables, url, tags, accent)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-`);
-
-function insertDataset(dataset: Dataset) {
-  insertStatement.run(
-    dataset.id,
-    dataset.title,
-    dataset.provider,
-    dataset.sourceType,
-    dataset.description,
-    dataset.domain,
-    dataset.country,
-    dataset.period,
-    JSON.stringify(dataset.formats),
-    dataset.license,
-    dataset.update,
-    dataset.score,
-    dataset.size,
-    dataset.access,
-    JSON.stringify(dataset.variables),
-    dataset.url,
-    JSON.stringify(dataset.tags),
-    dataset.accent,
-  );
+function datasetToRow(dataset: Dataset): DatasetRow {
+  return {
+    id: dataset.id,
+    title: dataset.title,
+    provider: dataset.provider,
+    source_type: dataset.sourceType,
+    description: dataset.description,
+    domain: dataset.domain,
+    country: dataset.country,
+    period: dataset.period,
+    formats: JSON.stringify(dataset.formats),
+    license: dataset.license,
+    update_frequency: dataset.update,
+    score: dataset.score,
+    size: dataset.size,
+    access: dataset.access,
+    variables: JSON.stringify(dataset.variables),
+    url: dataset.url,
+    tags: JSON.stringify(dataset.tags),
+    accent: dataset.accent,
+  };
 }
 
-// Claim the one-time seeding job atomically via INSERT OR IGNORE on a marker
-// row: only the process whose insert actually adds the row (changes > 0)
-// performs the seeding. This is safe when several processes open the same
-// brand-new database concurrently (as happens during `next build`, which
-// collects page data across multiple workers), and — unlike reseeding
-// whenever the datasets table is merely empty — it never re-inserts a seed
-// dataset that an admin has since deleted on purpose.
-const claimedSeed = withSqliteBusyRetry(
-  () => db.prepare("INSERT OR IGNORE INTO meta (key, value) VALUES ('seeded', '1')").run(),
-) as StatementResultingChanges;
-if (claimedSeed.changes > 0) {
-  for (const dataset of seedDatasets) insertDataset(dataset);
+// Amorce le catalogue avec la sélection curée au tout premier démarrage sur
+// une base vide. La ligne meta("seeded") sert de verrou : sa contrainte
+// d'unicité garantit qu'une seule instance (parmi plusieurs cold starts
+// concurrents sur du serverless) effectue réellement l'insertion.
+async function ensureSeeded(): Promise<void> {
+  const { error } = await supabase.from("meta").insert({ key: "seeded", value: "1" });
+  if (error) {
+    if (error.code === "23505") return; // déjà amorcée par une autre instance
+    throw new Error(`Impossible de vérifier l'amorçage de la base : ${error.message}`);
+  }
+  for (const dataset of seedDatasets) {
+    const { error: insertError } = await supabase.from("datasets").insert(datasetToRow(dataset));
+    if (insertError) throw new Error(`Échec de l'amorçage du catalogue : ${insertError.message}`);
+  }
 }
 
-export function dbListDatasets(pagination: { limit: number; offset: number }): Dataset[] {
-  const rows = db
-    .prepare("SELECT * FROM datasets ORDER BY score DESC LIMIT ? OFFSET ?")
-    .all(pagination.limit, pagination.offset) as unknown as DatasetRow[];
-  return rows.map(rowToDataset);
+await ensureSeeded();
+
+export async function dbListDatasets(pagination: { limit: number; offset: number }): Promise<Dataset[]> {
+  const { data, error } = await supabase
+    .from("datasets")
+    .select("*")
+    .order("score", { ascending: false })
+    .range(pagination.offset, pagination.offset + pagination.limit - 1);
+  if (error) throw new Error(`Échec de la lecture des datasets : ${error.message}`);
+  return (data as DatasetRow[]).map(rowToDataset);
 }
 
-export function dbCountDatasets(): number {
-  const { count } = db.prepare("SELECT COUNT(*) as count FROM datasets").get() as { count: number };
-  return count;
+export async function dbCountDatasets(): Promise<number> {
+  const { count, error } = await supabase.from("datasets").select("*", { count: "exact", head: true });
+  if (error) throw new Error(`Échec du comptage des datasets : ${error.message}`);
+  return count ?? 0;
 }
 
-export function dbListAllDatasets(): Dataset[] {
-  const rows = db.prepare("SELECT * FROM datasets").all() as unknown as DatasetRow[];
-  return rows.map(rowToDataset);
+export async function dbListAllDatasets(): Promise<Dataset[]> {
+  const all: Dataset[] = [];
+  let offset = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from("datasets")
+      .select("*")
+      .range(offset, offset + FETCH_ALL_BATCH_SIZE - 1);
+    if (error) throw new Error(`Échec de la lecture du catalogue : ${error.message}`);
+    const rows = data as DatasetRow[];
+    all.push(...rows.map(rowToDataset));
+    if (rows.length < FETCH_ALL_BATCH_SIZE) break;
+    offset += FETCH_ALL_BATCH_SIZE;
+  }
+  return all;
 }
 
 export type CatalogStats = { datasets: number; providers: number; domains: number; licenses: number };
 
-export function dbCatalogStats(): CatalogStats {
-  return db.prepare(`
-    SELECT COUNT(*) as datasets,
-           COUNT(DISTINCT provider) as providers,
-           COUNT(DISTINCT domain) as domains,
-           COUNT(DISTINCT license) as licenses
-    FROM datasets
-  `).get() as CatalogStats;
+export async function dbCatalogStats(): Promise<CatalogStats> {
+  const { data, error } = await supabase.rpc("get_catalog_stats").single();
+  if (error) throw new Error(`Échec du calcul des statistiques : ${error.message}`);
+  // Postgres renvoie les bigint (COUNT) en JSON sous forme de chaîne pour
+  // préserver la précision au-delà de Number.MAX_SAFE_INTEGER ; sans risque
+  // de dépassement ici, on les convertit en nombre pour l'API/le front.
+  const row = data as Record<keyof CatalogStats, number | string>;
+  return {
+    datasets: Number(row.datasets),
+    providers: Number(row.providers),
+    domains: Number(row.domains),
+    licenses: Number(row.licenses),
+  };
 }
 
-export function dbHealthCheck(): boolean {
-  try {
-    db.prepare("SELECT 1").get();
-    return true;
-  } catch {
-    return false;
-  }
+export async function dbHealthCheck(): Promise<boolean> {
+  const { error } = await supabase.from("datasets").select("id").limit(1);
+  return !error;
 }
 
-export function dbGetDataset(id: string): Dataset | undefined {
-  const row = db.prepare("SELECT * FROM datasets WHERE id = ?").get(id) as unknown as DatasetRow | undefined;
-  return row ? rowToDataset(row) : undefined;
+export async function dbGetDataset(id: string): Promise<Dataset | undefined> {
+  const { data, error } = await supabase.from("datasets").select("*").eq("id", id).maybeSingle();
+  if (error) throw new Error(`Échec de la lecture du dataset : ${error.message}`);
+  return data ? rowToDataset(data as DatasetRow) : undefined;
 }
 
-export function dbDatasetExists(id: string): boolean {
-  return db.prepare("SELECT 1 FROM datasets WHERE id = ?").get(id) !== undefined;
+export async function dbDatasetExists(id: string): Promise<boolean> {
+  const { count, error } = await supabase.from("datasets").select("id", { count: "exact", head: true }).eq("id", id);
+  if (error) throw new Error(`Échec de la vérification du dataset : ${error.message}`);
+  return (count ?? 0) > 0;
 }
 
-export function dbInsertDataset(dataset: Dataset): void {
-  insertDataset(dataset);
+export async function dbInsertDataset(dataset: Dataset): Promise<void> {
+  const { error } = await supabase.from("datasets").insert(datasetToRow(dataset));
+  if (error) throw new Error(`Échec de l'insertion du dataset : ${error.message}`);
 }
 
-const updateStatement = db.prepare(`
-  UPDATE datasets SET
-    title = ?, provider = ?, sourceType = ?, description = ?, domain = ?, country = ?,
-    period = ?, formats = ?, license = ?, updateFrequency = ?, score = ?, size = ?,
-    access = ?, variables = ?, url = ?, tags = ?, accent = ?
-  WHERE id = ?
-`);
-
-export function dbUpdateDataset(dataset: Dataset): boolean {
-  const result = updateStatement.run(
-    dataset.title,
-    dataset.provider,
-    dataset.sourceType,
-    dataset.description,
-    dataset.domain,
-    dataset.country,
-    dataset.period,
-    JSON.stringify(dataset.formats),
-    dataset.license,
-    dataset.update,
-    dataset.score,
-    dataset.size,
-    dataset.access,
-    JSON.stringify(dataset.variables),
-    dataset.url,
-    JSON.stringify(dataset.tags),
-    dataset.accent,
-    dataset.id,
-  ) as StatementResultingChanges;
-  return result.changes > 0;
+export async function dbUpdateDataset(dataset: Dataset): Promise<boolean> {
+  const { id, ...row } = datasetToRow(dataset);
+  const { data, error } = await supabase.from("datasets").update(row).eq("id", id).select("id");
+  if (error) throw new Error(`Échec de la mise à jour du dataset : ${error.message}`);
+  return (data?.length ?? 0) > 0;
 }
 
-export function dbDeleteDataset(id: string): boolean {
-  const result = db.prepare("DELETE FROM datasets WHERE id = ?").run(id) as StatementResultingChanges;
-  return result.changes > 0;
+export async function dbDeleteDataset(id: string): Promise<boolean> {
+  const { data, error } = await supabase.from("datasets").delete().eq("id", id).select("id");
+  if (error) throw new Error(`Échec de la suppression du dataset : ${error.message}`);
+  return (data?.length ?? 0) > 0;
 }

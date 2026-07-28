@@ -2,8 +2,8 @@ import { dbHealthCheck } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-export function GET() {
-  const dbOk = dbHealthCheck();
+export async function GET() {
+  const dbOk = await dbHealthCheck();
 
   return Response.json(
     {

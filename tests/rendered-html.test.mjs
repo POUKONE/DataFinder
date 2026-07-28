@@ -17,7 +17,7 @@ test("contient les surfaces principales de DataFinder", async () => {
   assert.match(page, /\/api\/datasets/);
   assert.match(page, /Comparer maintenant/);
   assert.match(seed, /Demandes de valeurs foncières/);
-  assert.match(db, /node:sqlite/);
+  assert.match(db, /@supabase\/supabase-js/);
   assert.match(apiRoute, /GET/);
   assert.match(apiRoute, /checkApiKey/);
   assert.match(apiRoute, /pageSize/);
