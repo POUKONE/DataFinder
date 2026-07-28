@@ -93,10 +93,22 @@ function datasetToRow(dataset: Dataset): DatasetRow {
 // une base vide. La ligne meta("seeded") sert de verrou : sa contrainte
 // d'unicité garantit qu'une seule instance (parmi plusieurs cold starts
 // concurrents sur du serverless) effectue réellement l'insertion.
-async function ensureSeeded(): Promise<void> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function ensureSeeded(attempt = 1): Promise<void> {
   const { error } = await supabase.from("meta").insert({ key: "seeded", value: "1" });
   if (error) {
     if (error.code === "23505") return; // déjà amorcée par une autre instance
+    // "JWT issued at future" est une erreur ponctuelle observée sporadiquement
+    // (build local et CI) au tout premier appel réseau vers Supabase, sans
+    // rapport avec une vraie dérive d'horloge constatée par ailleurs ; un
+    // simple nouvel essai suffit systématiquement à la faire disparaître.
+    if (error.message.includes("JWT issued at future") && attempt < 3) {
+      await sleep(300 * attempt);
+      return ensureSeeded(attempt + 1);
+    }
     throw new Error(`Impossible de vérifier l'amorçage de la base : ${error.message}`);
   }
   for (const dataset of seedDatasets) {
